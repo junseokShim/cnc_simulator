@@ -11,6 +11,7 @@ from app.models.toolpath import Toolpath, MotionType
 from app.models.machine import MachineDef
 from app.models.tool import Tool
 from app.models.project import ProjectConfig
+from app.models.machining_result import MachiningAnalysis, ChatterRiskLevel
 from app.verification.rules import VerificationWarning
 from app.simulation.time_estimator import TimeEstimator
 from app.utils.logger import get_logger
@@ -33,7 +34,8 @@ class ReportService:
                         warnings: List[VerificationWarning],
                         machine: MachineDef,
                         tools: Dict[int, Tool],
-                        project_config: Optional[ProjectConfig] = None) -> str:
+                        project_config: Optional[ProjectConfig] = None,
+                        machining_analysis: Optional[MachiningAnalysis] = None) -> str:
         """
         종합 검증 보고서를 생성합니다.
 
@@ -201,6 +203,41 @@ class ReportService:
                 lines.append(f"  [{w.severity}] 라인 {w.line_number}: {w.message}")
             lines.append("")
 
+        # 6.5 가공 수치 모델 해석 결과
+        if machining_analysis is not None:
+            lines.append(sep_minor)
+            lines.append("  [ 가공 수치 모델 해석 결과 ]")
+            lines.append(sep_minor)
+            a = machining_analysis
+            params = a.model_params
+            lines.append(f"  재료 설정:        {params.get('material', '?')}")
+            lines.append(f"  비절삭저항 Kc1:   {params.get('Kc1', 0):.0f} N/mm²")
+            lines.append(f"  날당이송 지수 mc: {params.get('mc', 0):.3f}")
+            lines.append(f"  스핀들 정격출력:  {params.get('spindle_rated_power_w', 0)/1000:.1f} kW")
+            lines.append(f"  기본 ae/D 비율:   {params.get('default_ae_ratio', 0):.2f}")
+            lines.append(f"  기본 ap:          {params.get('default_ap_mm', 0):.1f} mm")
+            lines.append("")
+            lines.append(f"  최대 스핀들 부하: {a.max_spindle_load_pct:.1f}%")
+            lines.append(f"  평균 스핀들 부하: {a.avg_spindle_load_pct:.1f}%")
+            lines.append(f"  최대 채터 위험도: {a.max_chatter_risk*100:.1f}%")
+            lines.append(f"  평균 채터 위험도: {a.avg_chatter_risk*100:.1f}%")
+            lines.append(f"  최대 절삭력:      {a.max_cutting_force:.1f} N")
+            lines.append(f"  고위험 블록 수:   {a.high_risk_segment_count}개 ({a.high_risk_pct:.1f}%)")
+            lines.append("")
+
+            # 고위험 세그먼트 목록 (최대 20개)
+            high_risk = [r for r in a.results if r.is_high_risk]
+            if high_risk:
+                lines.append(f"  ※ 채터 고위험 구간 (상위 {min(20, len(high_risk))}개):")
+                for r in sorted(high_risk, key=lambda x: x.chatter_risk_score, reverse=True)[:20]:
+                    lines.append(
+                        f"    블록 {r.segment_id:>5d} | "
+                        f"위험도: {r.chatter_risk_pct:5.1f}%  "
+                        f"부하: {r.spindle_load_pct:5.1f}%  "
+                        f"[{r.chatter_risk_level.value}]"
+                    )
+                lines.append("")
+
         # 7. 시스템 한계 주의사항
         lines.append(sep_minor)
         lines.append("  [ 주의사항 및 시스템 한계 ]")
@@ -211,7 +248,10 @@ class ReportService:
         lines.append("    공구 교환 시간 등에 따라 다를 수 있습니다.")
         lines.append("  * G54~G59 좌표계 오프셋은 현재 지원되지 않습니다.")
         lines.append("  * 서브프로그램(M98/M99)은 현재 지원되지 않습니다.")
-        lines.append("  * 실제 가공 전 반드시 숙련된 기술자의 최종 검토가 필요합니다.")
+        lines.append("  * 스핀들 부하 및 채터 위험도는 공학적 근사 모델 결과입니다.")
+        lines.append("    실제 가공 조건과 차이가 있을 수 있으며, 실제 가공 전")
+        lines.append("    반드시 숙련된 기술자의 최종 검토가 필요합니다.")
+        lines.append("  * 채터 안정성 로브선도(SLD) 완전 해석은 미구현 상태입니다.")
         lines.append("")
         lines.append(sep_major)
         lines.append("  보고서 끝 / End of Report")
