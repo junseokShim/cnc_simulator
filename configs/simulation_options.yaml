@@ -1,0 +1,49 @@
+# 시뮬레이션 옵션 설정 파일
+# 시뮬레이션 동작과 표시 방식을 설정합니다.
+
+# 소재(스톡) 기본 설정
+stock:
+  # 소재 최소 모서리 [X, Y, Z] (mm) - 소재의 한쪽 끝
+  min: [-60.0, -60.0, -30.0]
+  # 소재 최대 모서리 [X, Y, Z] (mm) - 소재의 반대쪽 끝
+  max: [60.0, 60.0, 0.0]
+  # Z-맵 격자 해상도 (mm/셀)
+  # 작을수록 정밀하지만 메모리와 계산 시간이 증가합니다.
+  resolution: 2.0
+
+# 검증 규칙 설정
+verification:
+  # 급속 이동(G0)이 소재 내부로 진입하는지 검사
+  check_rapid_into_stock: true
+  # 이동 위치가 머신 이동 범위를 초과하는지 검사
+  check_out_of_bounds: true
+  # 참조된 공구가 공구 라이브러리에 정의되어 있는지 검사
+  check_missing_tool: true
+  # 주축 정지 상태에서 절삭 이동이 발생하는지 검사
+  check_spindle_off: true
+  # 단일 이동에서 허용되는 최대 Z 하강량 (mm)
+  z_plunge_threshold: 15.0
+
+# 3D 뷰어 표시 설정
+display:
+  # 공구경로 선 굵기 (픽셀)
+  toolpath_line_width: 2.0
+  # 급속 이동 선 색상 [R, G, B] (0.0~1.0)
+  rapid_color: [0.2, 0.5, 1.0]
+  # 절삭 이동 선 색상 [R, G, B]
+  cutting_color: [0.2, 0.9, 0.3]
+  # 원호 이동 선 색상 [R, G, B]
+  arc_color: [1.0, 0.8, 0.2]
+  # 3D 뷰어 배경색 [R, G, B]
+  background_color: [0.15, 0.15, 0.18]
+
+# 시뮬레이션 재생 설정
+playback:
+  # 기본 재생 속도 배율 (1.0 = 정상 속도)
+  default_speed: 1.0
+  # 최대 재생 속도 배율
+  max_speed: 10.0
+  # 최소 재생 속도 배율
+  min_speed: 0.1
+  # 타이머 기본 간격 (ms)
+  timer_interval: 100

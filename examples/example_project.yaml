@@ -1,0 +1,40 @@
+# CNC 시뮬레이터 프로젝트 파일 예제
+# 단순 포켓 가공 시뮬레이션 프로젝트
+project_name: "단순 포켓 가공 프로젝트"
+version: "1.0"
+
+# NC 파일 경로 (프로젝트 파일 기준 상대 경로 또는 절대 경로)
+nc_file: "simple_pocket.nc"
+
+# 머신 설정
+machine:
+  name: "3축 VMC"
+  axes:
+    X: {min_travel: -500.0, max_travel: 500.0}
+    Y: {min_travel: -400.0, max_travel: 400.0}
+    Z: {min_travel: -300.0, max_travel: 100.0}
+  max_spindle_rpm: 12000
+  max_feedrate: 10000.0
+  rapid_feedrate: 15000.0
+
+# 소재 설정
+stock:
+  min: [-60.0, -60.0, -30.0]
+  max: [60.0, 60.0, 0.0]
+  resolution: 2.0
+
+# 공구 설정 (이 프로젝트에서 사용할 공구만 정의)
+tools:
+  - tool_number: 1
+    name: "플랫 엔드밀 φ10"
+    tool_type: "END_MILL"
+    diameter: 10.0
+    length: 75.0
+    flute_length: 25.0
+    corner_radius: 0.0
+
+# 시뮬레이션 옵션
+simulation_options:
+  playback_speed: 1.0
+  show_stock: true
+  check_collisions: true

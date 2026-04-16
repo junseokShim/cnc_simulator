@@ -1,0 +1,65 @@
+# 기본 공구 라이브러리 설정 파일
+# 자주 사용하는 공구들의 기본 사양을 정의합니다.
+# 실제 공구 측정값으로 교체하여 사용하세요.
+# 지원 공구 종류: END_MILL, BALL_END, DRILL, FACE_MILL, TAP
+
+tools:
+  # T1: 플랫 엔드밀 φ10mm - 일반 포켓 및 윤곽 가공용
+  - tool_number: 1
+    name: "플랫 엔드밀 φ10"
+    tool_type: "END_MILL"
+    diameter: 10.0        # 공구 직경 (mm)
+    length: 75.0          # 공구 전체 길이 (mm)
+    flute_length: 25.0    # 절삭날 길이 (mm)
+    corner_radius: 0.0    # 코너 반경 (mm), 플랫은 0
+    flute_count: 4        # 날 수
+
+  # T2: 볼 엔드밀 φ8mm - 3D 곡면 가공용
+  - tool_number: 2
+    name: "볼 엔드밀 φ8"
+    tool_type: "BALL_END"
+    diameter: 8.0
+    length: 70.0
+    flute_length: 20.0
+    corner_radius: 4.0    # 볼 엔드밀은 radius = diameter/2
+    flute_count: 4
+
+  # T3: 드릴 φ6mm - 관통 구멍 가공용
+  - tool_number: 3
+    name: "드릴 φ6"
+    tool_type: "DRILL"
+    diameter: 6.0
+    length: 80.0
+    flute_length: 40.0    # 드릴의 실제 절삭 가능 깊이
+    corner_radius: 0.0
+    flute_count: 2
+
+  # T4: 페이스밀 φ50mm - 대형 평면 가공용
+  - tool_number: 4
+    name: "페이스밀 φ50"
+    tool_type: "FACE_MILL"
+    diameter: 50.0
+    length: 40.0
+    flute_length: 5.0     # 페이스밀의 절삭 깊이는 얕음
+    corner_radius: 0.0
+    flute_count: 5
+
+  # T5: 플랫 엔드밀 φ6mm - 소형 포켓 가공용
+  - tool_number: 5
+    name: "플랫 엔드밀 φ6"
+    tool_type: "END_MILL"
+    diameter: 6.0
+    length: 60.0
+    flute_length: 18.0
+    corner_radius: 0.0
+    flute_count: 4
+
+  # T6: M8 탭 - 나사 가공용
+  - tool_number: 6
+    name: "M8 탭"
+    tool_type: "TAP"
+    diameter: 8.0
+    length: 70.0
+    flute_length: 25.0
+    corner_radius: 0.0
+    flute_count: 2

@@ -1,0 +1,110 @@
+2026-04-16 15:55:42 [INFO    ] cnc_simulator.gcode_parser.parse_file:63 - NC 파일 파싱 시작: examples/simple_pocket.nc
+2026-04-16 15:55:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:55:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 520)
+2026-04-16 15:55:42 [INFO    ] cnc_simulator.gcode_parser.parse_file:72 - 파싱 완료: 48개 세그먼트, 0개 경고
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 50x50 격자, 해상도 2.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 100x100 격자, 해상도 1.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 50x50 격자, 해상도 2.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.reset:276 - 소재 모델 초기화됨
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 4x4 격자, 해상도 5.0mm, 범위 [-10. -10.  -5.] ~ [10. 10.  0.]
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 9)
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 30x30 격자, 해상도 2.0mm, 범위 [-30. -30. -20.] ~ [30. 30.  0.]
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.material_removal.simulate:109 - 재료 제거 시뮬레이션 완료: 총 5개 세그먼트, 절삭 2개 처리
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 10)
+2026-04-16 15:56:17 [WARNING ] cnc_simulator.gcode_parser._add_warning:358 - [WARNING] 라인 2: 원호 반경 불일치: 시작=40.000, 끝=80.000
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.gcode_parser.parse_file:63 - NC 파일 파싱 시작: examples/simple_pocket.nc
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 520)
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.gcode_parser.parse_file:72 - 파싱 완료: 48개 세그먼트, 0개 경고
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 2개 세그먼트
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 4개 세그먼트
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.time_estimator.estimate_total_time:111 - 총 가공 시간 추정: 6.4초 (공구 교환 0회 포함)
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:17 [WARNING ] cnc_simulator.gcode_parser._add_warning:358 - [WARNING] 라인 1: G1 이동에 이송 속도가 0입니다
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T99
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 8)
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 24x24 격자, 해상도 5.0mm, 범위 [-60. -60. -30.] ~ [60. 60.  0.]
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.verification_checker.run_all_checks:106 - NC 코드 검증 시작: 4개 세그먼트
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:114 - 급속 이동 충돌: 1개 발견
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:134 - 미정의 공구: 1개 발견
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:154 - 대형 Z 플런지: 1개 발견
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.verification_checker.run_all_checks:209 - 검증 완료: 오류 0개, 경고 3개, 정보 0개 (총 3개)
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 10)
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 24x24 격자, 해상도 5.0mm, 범위 [-60. -60. -30.] ~ [60. 60.  0.]
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.verification_checker.run_all_checks:106 - NC 코드 검증 시작: 5개 세그먼트
+2026-04-16 15:56:17 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:114 - 급속 이동 충돌: 1개 발견
+2026-04-16 15:56:17 [INFO    ] cnc_simulator.verification_checker.run_all_checks:209 - 검증 완료: 오류 0개, 경고 1개, 정보 0개 (총 1개)
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.main:19 - CNC 시뮬레이터 시작
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.main:20 - Python 버전: 3.11.8 (main, Apr 15 2026, 08:57:54) [Clang 21.1.6 ]
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.gcode_parser.parse_file:63 - NC 파일 파싱 시작: examples/simple_pocket.nc
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 520)
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.gcode_parser.parse_file:72 - 파싱 완료: 48개 세그먼트, 0개 경고
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 24x24 격자, 해상도 5.0mm, 범위 [-60. -60. -30.] ~ [60. 60.  0.]
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.verification_checker.run_all_checks:106 - NC 코드 검증 시작: 48개 세그먼트
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:114 - 급속 이동 충돌: 3개 발견
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:134 - 미정의 공구: 1개 발견
+2026-04-16 15:56:21 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:154 - 대형 Z 플런지: 1개 발견
+2026-04-16 15:56:21 [INFO    ] cnc_simulator.verification_checker.run_all_checks:209 - 검증 완료: 오류 0개, 경고 5개, 정보 0개 (총 5개)
+2026-04-16 15:56:39 [INFO    ] cnc_simulator.gcode_parser.parse_file:63 - NC 파일 파싱 시작: examples/simple_pocket.nc
+2026-04-16 15:56:39 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:39 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 520)
+2026-04-16 15:56:39 [INFO    ] cnc_simulator.gcode_parser.parse_file:72 - 파싱 완료: 48개 세그먼트, 0개 경고
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 50x50 격자, 해상도 2.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 100x100 격자, 해상도 1.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 50x50 격자, 해상도 2.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 20x20 격자, 해상도 5.0mm, 범위 [-50. -50. -25.] ~ [50. 50.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.reset:276 - 소재 모델 초기화됨
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 4x4 격자, 해상도 5.0mm, 범위 [-10. -10.  -5.] ~ [10. 10.  0.]
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 9)
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 30x30 격자, 해상도 2.0mm, 범위 [-30. -30. -20.] ~ [30. 30.  0.]
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.material_removal.simulate:109 - 재료 제거 시뮬레이션 완료: 총 5개 세그먼트, 절삭 2개 처리
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 10)
+2026-04-16 15:56:42 [WARNING ] cnc_simulator.gcode_parser._add_warning:358 - [WARNING] 라인 2: 원호 반경 불일치: 시작=40.000, 끝=80.000
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.gcode_parser.parse_file:63 - NC 파일 파싱 시작: examples/simple_pocket.nc
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 520)
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.gcode_parser.parse_file:72 - 파싱 완료: 48개 세그먼트, 0개 경고
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 2개 세그먼트
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 4개 세그먼트
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.time_estimator.estimate_total_time:111 - 총 가공 시간 추정: 6.4초 (공구 교환 0회 포함)
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.machine_state.load_toolpath:58 - 공구경로 로드: 3개 세그먼트
+2026-04-16 15:56:42 [WARNING ] cnc_simulator.gcode_parser._add_warning:358 - [WARNING] 라인 1: G1 이동에 이송 속도가 0입니다
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T99
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 8)
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 24x24 격자, 해상도 5.0mm, 범위 [-60. -60. -30.] ~ [60. 60.  0.]
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.verification_checker.run_all_checks:106 - NC 코드 검증 시작: 4개 세그먼트
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:114 - 급속 이동 충돌: 1개 발견
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:134 - 미정의 공구: 1개 발견
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:154 - 대형 Z 플런지: 1개 발견
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.verification_checker.run_all_checks:209 - 검증 완료: 오류 0개, 경고 3개, 정보 0개 (총 3개)
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.modal_state._process_m_code:199 - 공구 교환: T0 → T1
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.gcode_parser._parse_lines:135 - 프로그램 종료 코드 감지 (라인 10)
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.stock_model.__init__:47 - 소재 모델 생성: 24x24 격자, 해상도 5.0mm, 범위 [-60. -60. -30.] ~ [60. 60.  0.]
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.verification_checker.run_all_checks:106 - NC 코드 검증 시작: 5개 세그먼트
+2026-04-16 15:56:42 [DEBUG   ] cnc_simulator.verification_checker.run_all_checks:114 - 급속 이동 충돌: 1개 발견
+2026-04-16 15:56:42 [INFO    ] cnc_simulator.verification_checker.run_all_checks:209 - 검증 완료: 오류 0개, 경고 1개, 정보 0개 (총 1개)
