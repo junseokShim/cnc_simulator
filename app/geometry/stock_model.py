@@ -327,6 +327,16 @@ class StockModel:
         """초기 상면 기준 제거 깊이 맵을 반환합니다."""
         return self.removed_depth_grid.copy()
 
+    def has_material_removal(self, threshold: float = 0.01) -> bool:
+        """
+        실제로 제거된 재질이 있는지 빠르게 판별합니다.
+
+        큰 소재에서 3D 메쉬를 매번 만들면 렌더링 비용이 커지므로,
+        초기 상태처럼 제거 흔적이 없을 때는 메쉬 생성을 생략하는
+        기준으로 사용합니다.
+        """
+        return bool(np.any(self.removed_depth_grid > threshold))
+
     def get_surface_grid(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """현재 스톡 상면의 X/Y 격자 중심 좌표와 Z-grid를 반환합니다."""
         x_coords = self.min_corner[0] + (np.arange(self._nx) + 0.5) * self.resolution
@@ -344,6 +354,35 @@ class StockModel:
             (self.trace_intensity_grid > threshold)
         )
 
+    def _expand_field(self, field: np.ndarray, radius_cells: int = 1) -> np.ndarray:
+        """
+        표시용 footprint를 약간 키우는 최대값 확장입니다.
+
+        실제 제거 형상은 유지하고, 화면에 보이는 흔적만 살짝 넓혀서
+        공구가 지나간 자리가 더 선명하게 보이도록 합니다.
+        """
+        radius_cells = max(0, int(radius_cells))
+        if radius_cells == 0 or field.size == 0:
+            return field.copy()
+
+        expanded = field.copy()
+        for dx in range(-radius_cells, radius_cells + 1):
+            for dy in range(-radius_cells, radius_cells + 1):
+                shifted = np.roll(field, shift=(dx, dy), axis=(0, 1))
+
+                if dx > 0:
+                    shifted[:dx, :] = 0.0
+                elif dx < 0:
+                    shifted[dx:, :] = 0.0
+
+                if dy > 0:
+                    shifted[:, :dy] = 0.0
+                elif dy < 0:
+                    shifted[:, dy:] = 0.0
+
+                expanded = np.maximum(expanded, shifted)
+        return expanded
+
     def get_trace_image_rgba(self, mode: str = "footprint") -> np.ndarray:
         """
         뷰어 오버레이용 RGBA 이미지를 생성합니다.
@@ -354,12 +393,32 @@ class StockModel:
           - chatter: 최대 채터 위험도 기반
         """
         total_depth = max(1.0, self.initial_top_z - float(self.min_corner[2]))
-        removed_norm = np.clip(self.removed_depth_grid / total_depth, 0.0, 1.0)
-        trace_norm = np.clip(
-            np.maximum(removed_norm, np.minimum(1.0, self.trace_intensity_grid)),
-            0.0, 1.0
+        display_radius = 1 if self.resolution <= 3.0 else 2
+
+        removed_display = self._expand_field(
+            self.removed_depth_grid,
+            radius_cells=display_radius,
         )
-        mask = self.get_machined_mask()
+        trace_display = self._expand_field(
+            self.trace_intensity_grid,
+            radius_cells=display_radius,
+        )
+        load_display = self._expand_field(
+            self.load_map,
+            radius_cells=display_radius,
+        )
+        chatter_display = self._expand_field(
+            self.chatter_map,
+            radius_cells=display_radius,
+        )
+
+        removed_norm = np.clip(removed_display / total_depth, 0.0, 1.0)
+        trace_norm = np.clip(
+            np.maximum(removed_norm, np.minimum(1.0, trace_display)),
+            0.0,
+            1.0,
+        )
+        mask = (removed_display > 0.01) | (trace_display > 0.01)
 
         rgba = np.zeros((self._nx, self._ny, 4), dtype=np.ubyte)
 
@@ -367,15 +426,15 @@ class StockModel:
         rgba[..., 0] = 166
         rgba[..., 1] = 138
         rgba[..., 2] = 102
-        rgba[..., 3] = 26
+        rgba[..., 3] = 18
 
         if mode == "load":
-            value = np.clip(self.load_map / 100.0, 0.0, 1.0)
+            value = np.clip(load_display / 100.0, 0.0, 1.0)
             red = (60 + value * 180).astype(np.ubyte)
             green = (180 - value * 120).astype(np.ubyte)
             blue = (170 - value * 140).astype(np.ubyte)
         elif mode == "chatter":
-            value = np.clip(self.chatter_map / 100.0, 0.0, 1.0)
+            value = np.clip(chatter_display / 100.0, 0.0, 1.0)
             red = (80 + value * 175).astype(np.ubyte)
             green = (170 - value * 120).astype(np.ubyte)
             blue = (200 - value * 170).astype(np.ubyte)
@@ -383,11 +442,11 @@ class StockModel:
             # 기본 footprint 모드에서는 제거 깊이가 깊을수록 더 차갑고 진하게 보이도록
             # 색상을 줘서 Z 방향 절삭 깊이 차이가 시각적으로 남게 합니다.
             value = np.clip(np.maximum(trace_norm, removed_norm), 0.0, 1.0)
-            red = (85 - removed_norm * 45).astype(np.ubyte)
-            green = (120 + value * 70 - removed_norm * 18).astype(np.ubyte)
-            blue = (135 + removed_norm * 115).astype(np.ubyte)
+            red = (88 - removed_norm * 52).astype(np.ubyte)
+            green = (124 + value * 82 - removed_norm * 24).astype(np.ubyte)
+            blue = (136 + removed_norm * 118).astype(np.ubyte)
 
-        alpha = (40 + value * 170).astype(np.ubyte)
+        alpha = (65 + value * 185).astype(np.ubyte)
 
         rgba[mask, 0] = red[mask]
         rgba[mask, 1] = green[mask]
@@ -396,30 +455,50 @@ class StockModel:
 
         return rgba
 
-    def to_mesh_data(self) -> Tuple[np.ndarray, np.ndarray]:
+    def to_mesh_data(self, max_vertices: int = 30000) -> Tuple[np.ndarray, np.ndarray]:
         """
         Z-맵을 3D 메시 데이터로 변환합니다.
         """
+        if self._nx <= 0 or self._ny <= 0:
+            return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
+
+        total_vertices = self._nx * self._ny
+        stride = 1
+        if max_vertices > 0 and total_vertices > max_vertices:
+            stride = int(math.ceil(math.sqrt(total_vertices / float(max_vertices))))
+
+        x_indices = np.arange(0, self._nx, stride, dtype=int)
+        y_indices = np.arange(0, self._ny, stride, dtype=int)
+
+        if x_indices[-1] != self._nx - 1:
+            x_indices = np.append(x_indices, self._nx - 1)
+        if y_indices[-1] != self._ny - 1:
+            y_indices = np.append(y_indices, self._ny - 1)
+
+        sample_grid = self.grid[np.ix_(x_indices, y_indices)]
+        sample_nx = len(x_indices)
+        sample_ny = len(y_indices)
+
         vertices = []
         faces = []
 
-        for ix in range(self._nx):
-            for iy in range(self._ny):
-                x, y = self._grid_to_world(ix, iy)
-                z = float(self.grid[ix, iy])
+        for sx, ix in enumerate(x_indices):
+            for sy, iy in enumerate(y_indices):
+                x, y = self._grid_to_world(int(ix), int(iy))
+                z = float(sample_grid[sx, sy])
                 vertices.append([x, y, z])
 
-        for ix in range(self._nx - 1):
-            for iy in range(self._ny - 1):
-                v00 = ix * self._ny + iy
-                v01 = ix * self._ny + (iy + 1)
-                v10 = (ix + 1) * self._ny + iy
-                v11 = (ix + 1) * self._ny + (iy + 1)
+        for sx in range(sample_nx - 1):
+            for sy in range(sample_ny - 1):
+                v00 = sx * sample_ny + sy
+                v01 = sx * sample_ny + (sy + 1)
+                v10 = (sx + 1) * sample_ny + sy
+                v11 = (sx + 1) * sample_ny + (sy + 1)
 
                 faces.append([v00, v10, v11])
                 faces.append([v00, v11, v01])
 
-        if not vertices:
+        if not vertices or not faces:
             return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
 
         return np.array(vertices, dtype=float), np.array(faces, dtype=int)

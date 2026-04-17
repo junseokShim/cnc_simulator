@@ -231,6 +231,10 @@ class MainWindow(QMainWindow):
         save_report_action.triggered.connect(self._on_save_report)
         file_menu.addAction(save_report_action)
 
+        save_csv_action = QAction("해석 결과 CSV 저장(&C)...", self)
+        save_csv_action.triggered.connect(self._on_save_analysis_csv)
+        file_menu.addAction(save_csv_action)
+
         file_menu.addSeparator()
 
         exit_action = QAction("종료(&X)", self)
@@ -592,12 +596,14 @@ class MainWindow(QMainWindow):
         stock_cfg["origin_mode"] = settings["origin_mode"]
         stock_cfg["resolution"] = float(settings["resolution"])
 
-    def _recompute_stock_dependent_state(self):
+    def _recompute_stock_dependent_state(self, reset_playback: bool = False):
         """소재 변경 시 스톡 기반 해석과 검증을 다시 수행합니다."""
         if self._stock_model is None:
             return
 
         if self._toolpath is None:
+            if reset_playback:
+                self._machine_state.reset()
             self._reset_simulation_stock()
             return
 
@@ -619,8 +625,14 @@ class MainWindow(QMainWindow):
             self._tools,
         )
 
-        completed = min(self._machine_state.completed_segments, len(self._toolpath.segments))
-        self._rebuild_simulation_stock(completed)
+        if reset_playback:
+            # 소재 기준이 바뀌면 기존 재생 흔적을 다시 전부 복원하는 것보다
+            # 재생 상태를 처음으로 돌리는 편이 자연스럽고 적용 렉도 크게 줄어듭니다.
+            self._machine_state.reset()
+            self._reset_simulation_stock(refresh_surface=True)
+        else:
+            completed = min(self._machine_state.completed_segments, len(self._toolpath.segments))
+            self._rebuild_simulation_stock(completed)
         self._update_all_widgets()
         self._update_status_summary()
         self._statusbar.showMessage("소재 설정 반영 완료", 3000)
@@ -667,7 +679,7 @@ class MainWindow(QMainWindow):
             )
             self._reset_simulation_stock()
             self._sync_stock_settings_panel()
-            self._recompute_stock_dependent_state()
+            self._recompute_stock_dependent_state(reset_playback=True)
 
             if self._toolpath is None:
                 size = settings["size"]
@@ -800,7 +812,7 @@ class MainWindow(QMainWindow):
         """정지 및 처음으로"""
         self._on_pause()
         self._machine_state.reset()
-        self._reset_simulation_stock()
+        self._reset_simulation_stock(refresh_surface=False)
         self._update_ui_for_current_segment()
 
     def _on_step_forward(self):
@@ -851,13 +863,13 @@ class MainWindow(QMainWindow):
             self._on_pause()
         self._update_ui_for_current_segment()
 
-    def _reset_simulation_stock(self):
+    def _reset_simulation_stock(self, refresh_surface: bool = True):
         """재생용 스톡을 초기 상태로 되돌립니다."""
         if self._stock_model is None:
             self._simulation_stock_model = None
             return
         self._simulation_stock_model = self._stock_model.copy()
-        self._viewer.set_stock(self._simulation_stock_model)
+        self._viewer.set_stock(self._simulation_stock_model, refresh_surface=refresh_surface)
 
     def _segment_metrics(self, segment_index: int) -> dict | None:
         """세그먼트의 부하/채터 정보를 흔적 맵에 함께 기록하기 위한 메타데이터를 반환합니다."""
@@ -882,11 +894,30 @@ class MainWindow(QMainWindow):
             self._tools,
             self._segment_metrics(segment_index),
         )
-        self._viewer.set_stock(self._simulation_stock_model)
+        self._viewer.set_stock(
+            self._simulation_stock_model,
+            refresh_surface=self._should_refresh_stock_surface(segment_index),
+        )
+
+    def _should_refresh_stock_surface(self, segment_index: int) -> bool:
+        """
+        3D 표면 메쉬 갱신 주기를 조절합니다.
+
+        footprint 오버레이는 매 세그먼트마다 갱신하되, 무거운 3D 표면 메쉬는
+        격자 수가 많을 때 간헐적으로만 갱신해 재생/소재 적용 렉을 줄입니다.
+        """
+        if self._simulation_stock_model is None:
+            return True
+
+        nx, ny = self._simulation_stock_model.grid_size
+        cell_count = nx * ny
+        if cell_count <= 12000:
+            return True
+        return segment_index % 8 == 0
 
     def _rebuild_simulation_stock(self, completed_segments: int):
         """특정 재생 위치까지의 가공 흔적을 처음부터 다시 누적합니다."""
-        self._reset_simulation_stock()
+        self._reset_simulation_stock(refresh_surface=False)
         if self._simulation_stock_model is None or self._toolpath is None:
             return
 
@@ -898,7 +929,7 @@ class MainWindow(QMainWindow):
                 self._tools,
                 self._segment_metrics(i),
             )
-        self._viewer.set_stock(self._simulation_stock_model)
+        self._viewer.set_stock(self._simulation_stock_model, refresh_surface=True)
 
     # ====================================================
     # 뷰어 색상 모드 변경
@@ -962,6 +993,47 @@ class MainWindow(QMainWindow):
             )
             self._report_service.save_report(report, filepath)
             QMessageBox.information(self, "저장 완료", f"보고서가 저장되었습니다:\n{filepath}")
+
+    def _on_save_analysis_csv(self):
+        """해석/검증 결과를 CSV 묶음으로 저장합니다."""
+        if self._toolpath is None:
+            QMessageBox.information(self, "알림", "먼저 NC 파일을 로드해 주세요.")
+            return
+
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "CSV 저장",
+            "nc_analysis.csv",
+            "CSV 파일 (*.csv)",
+        )
+        if not filepath:
+            return
+
+        try:
+            saved_paths = self._report_service.save_analysis_csv_bundle(
+                filepath,
+                self._toolpath,
+                self._warnings,
+                self._machine,
+                self._tools,
+                self._project_config,
+                self._machining_analysis,
+            )
+            msg = (
+                "CSV 저장이 완료되었습니다.\n\n"
+                f"- 요약: {saved_paths['summary']}\n"
+                f"- 공구: {saved_paths['tools']}\n"
+                f"- 경고: {saved_paths['warnings']}\n"
+                f"- 세그먼트: {saved_paths['segments']}"
+            )
+            QMessageBox.information(self, "저장 완료", msg)
+        except Exception as exc:
+            logger.error("CSV 저장 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "CSV 저장 오류",
+                f"해석 결과 CSV 저장 중 오류가 발생했습니다:\n{str(exc)}",
+            )
 
     def _on_show_report(self):
         """검증 보고서 다이얼로그 표시"""

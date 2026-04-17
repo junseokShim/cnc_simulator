@@ -101,6 +101,27 @@ def test_material_removal_width():
     assert h_far == pytest.approx(0.0, abs=0.5)
 
 
+def test_material_removal_is_symmetric_around_tool_centerline():
+    """공구 중심선을 기준으로 좌우 흔적이 대칭에 가깝게 남아야 한다."""
+    stock = StockModel(
+        np.array([-50.0, -50.0, -25.0]),
+        np.array([50.0, 50.0, 0.0]),
+        resolution=1.0
+    )
+    tool = make_test_tool(diameter=10.0)
+
+    start = np.array([0.0, 0.0, -5.0])
+    end = np.array([30.0, 0.0, -5.0])
+    stock.remove_material(start, end, tool)
+
+    h_pos = stock.get_height_at(15.0, 4.0)
+    h_neg = stock.get_height_at(15.0, -4.0)
+
+    assert h_pos <= -4.5
+    assert h_neg <= -4.5
+    assert abs(h_pos - h_neg) <= 0.6
+
+
 def test_material_removal_vertical():
     """수직 이동(Z 플런지)에 대한 재료 제거 테스트"""
     stock = StockModel(
@@ -156,6 +177,20 @@ def test_stock_to_mesh_data():
     assert vertices.shape[1] == 3  # [x, y, z]
     assert faces.shape[1] == 3     # 삼각형 (3개 인덱스)
     assert len(vertices) > 0
+    assert len(faces) > 0
+
+
+def test_stock_to_mesh_data_can_downsample_large_grid():
+    """큰 소재 격자에서도 메쉬 정점 수를 제한할 수 있어야 한다."""
+    stock = StockModel(
+        np.array([-100.0, -100.0, -20.0]),
+        np.array([100.0, 100.0, 0.0]),
+        resolution=1.0
+    )
+
+    vertices, faces = stock.to_mesh_data(max_vertices=5000)
+
+    assert len(vertices) <= 5500
     assert len(faces) > 0
 
 

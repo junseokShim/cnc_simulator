@@ -133,7 +133,7 @@ class _FallbackViewer2D(QWidget):
         self._toolpath = toolpath
         self._redraw()
 
-    def set_stock(self, stock_model: Optional[StockModel]):
+    def set_stock(self, stock_model: Optional[StockModel], refresh_surface: bool = True):
         self._stock_model = stock_model
         self._update_stock_overlay()
 
@@ -319,14 +319,14 @@ if _PYQTGRAPH_GL_AVAILABLE:
                 self.removeItem(self._pos_item)
                 self._pos_item = None
 
-        def _clear_stock_items(self):
+        def _clear_stock_items(self, clear_surface: bool = True):
             if self._stock_bounds_item is not None:
                 self.removeItem(self._stock_bounds_item)
                 self._stock_bounds_item = None
             if self._stock_overlay_item is not None:
                 self.removeItem(self._stock_overlay_item)
                 self._stock_overlay_item = None
-            if self._stock_surface_item is not None:
+            if clear_surface and self._stock_surface_item is not None:
                 self.removeItem(self._stock_surface_item)
                 self._stock_surface_item = None
 
@@ -347,9 +347,9 @@ if _PYQTGRAPH_GL_AVAILABLE:
                 azimuth=45,
             )
 
-        def set_stock(self, stock_model: Optional[StockModel]):
+        def set_stock(self, stock_model: Optional[StockModel], refresh_surface: bool = True):
             self._stock_model = stock_model
-            self._update_stock_overlay()
+            self._update_stock_overlay(refresh_surface=refresh_surface)
 
         def set_current_position(self, pos: Optional[np.ndarray], tool: Optional[Tool] = None):
             self._current_pos = pos
@@ -382,6 +382,8 @@ if _PYQTGRAPH_GL_AVAILABLE:
                 self._stock_overlay_item.setVisible(show)
             if self._stock_bounds_item is not None:
                 self._stock_bounds_item.setVisible(show)
+            if self._stock_surface_item is not None:
+                self._stock_surface_item.setVisible(show)
 
         def set_color_mode(self, mode: str, data: Optional[np.ndarray] = None):
             self._color_mode = mode
@@ -389,10 +391,13 @@ if _PYQTGRAPH_GL_AVAILABLE:
             self._redraw_toolpath()
             self._update_stock_overlay()
 
-        def _update_stock_overlay(self):
-            self._clear_stock_items()
+        def _update_stock_overlay(self, refresh_surface: bool = True):
+            self._clear_stock_items(clear_surface=refresh_surface)
 
             if not self._show_stock or self._stock_model is None:
+                if refresh_surface and self._stock_surface_item is not None:
+                    self.removeItem(self._stock_surface_item)
+                    self._stock_surface_item = None
                 return
 
             min_c = self._stock_model.min_corner
@@ -421,7 +426,11 @@ if _PYQTGRAPH_GL_AVAILABLE:
             )
             self.addItem(self._stock_bounds_item)
 
-            vertices, faces = self._stock_model.to_mesh_data()
+            if refresh_surface and self._stock_model.has_material_removal():
+                vertices, faces = self._stock_model.to_mesh_data(max_vertices=30000)
+            else:
+                vertices, faces = np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
+
             if len(vertices) > 0 and len(faces) > 0:
                 mesh_data = gl.MeshData(
                     vertexes=vertices.astype(np.float32),
@@ -437,6 +446,9 @@ if _PYQTGRAPH_GL_AVAILABLE:
                 )
                 self.addItem(surface)
                 self._stock_surface_item = surface
+            elif refresh_surface and self._stock_surface_item is not None:
+                self.removeItem(self._stock_surface_item)
+                self._stock_surface_item = None
 
             overlay_mode = "footprint" if self._color_mode == "default" else self._color_mode
             image = self._stock_model.get_trace_image_rgba(mode=overlay_mode)
