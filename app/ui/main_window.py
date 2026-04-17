@@ -29,6 +29,7 @@ from app.ui.tool_info_panel import ToolInfoPanel
 from app.ui.toolpath_widget import ToolpathListWidget
 from app.ui.report_dialog import ReportDialog
 from app.ui.analysis_panel import MachiningAnalysisPanel
+from app.ui.stock_settings_panel import StockSettingsPanel
 
 from app.parser.gcode_parser import GCodeParser
 from app.simulation.machine_state import MachineState
@@ -37,10 +38,15 @@ from app.simulation.machining_model import MachiningModel, MachiningModelConfig,
 from app.verification.checker import VerificationChecker
 from app.verification.rules import VerificationWarning
 from app.geometry.stock_model import StockModel
+from app.geometry.material_removal import MaterialRemovalSimulator
 from app.models.toolpath import Toolpath, MotionType
 from app.models.tool import Tool
 from app.models.machine import MachineDef, create_default_machine
-from app.models.project import ProjectConfig
+from app.models.project import (
+    ProjectConfig,
+    compute_stock_bounds_from_origin,
+    normalize_stock_origin_mode,
+)
 from app.models.machining_result import MachiningAnalysis
 from app.services.project_service import ProjectService
 from app.services.report_service import ReportService
@@ -70,6 +76,7 @@ class MainWindow(QMainWindow):
         self._machine: MachineDef = create_default_machine()
         self._tools: Dict[int, Tool] = {}
         self._stock_model: Optional[StockModel] = None
+        self._simulation_stock_model: Optional[StockModel] = None
         self._project_config: Optional[ProjectConfig] = None
         self._machining_analysis: Optional[MachiningAnalysis] = None
         self._sim_options: dict = {}
@@ -90,6 +97,7 @@ class MainWindow(QMainWindow):
         self._report_service = ReportService()
         self._project_service = ProjectService()
         self._machining_model: Optional[MachiningModel] = None
+        self._material_removal = MaterialRemovalSimulator()
 
         # 기본 설정 로드
         self._load_default_configs()
@@ -168,6 +176,9 @@ class MainWindow(QMainWindow):
         self._tool_info_panel = ToolInfoPanel()
         ctrl_layout.addWidget(self._tool_info_panel)
 
+        self._stock_settings_panel = StockSettingsPanel()
+        ctrl_layout.addWidget(self._stock_settings_panel)
+
         self._sim_controls = SimulationControlsWidget()
         ctrl_layout.addWidget(self._sim_controls)
         ctrl_layout.addStretch()
@@ -195,6 +206,8 @@ class MainWindow(QMainWindow):
         self._analysis_panel._color_mode_combo.currentIndexChanged.connect(
             self._on_color_mode_changed
         )
+        self._stock_settings_panel.apply_requested.connect(self._on_stock_settings_applied)
+        self._sync_stock_settings_panel()
 
     def _setup_menu(self):
         """메뉴 바를 구성합니다."""
@@ -322,7 +335,7 @@ class MainWindow(QMainWindow):
     # 파일 로드 (핵심 파이프라인)
     # ====================================================
 
-    def load_nc_file(self, filepath: str):
+    def _legacy_load_nc_file_unused(self, filepath: str):
         """
         NC 파일을 로드하고 전체 시뮬레이션 파이프라인을 실행합니다.
 
@@ -351,23 +364,15 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
 
             # 2. 소재 모델 초기화
-            if self._project_config:
-                stock_min = self._project_config.stock_min
-                stock_max = self._project_config.stock_max
-                resolution = self._project_config.stock_resolution
-            else:
-                stock_cfg = self._sim_options.get('stock', {})
-                stock_min = np.array(stock_cfg.get('min', [-60.0, -60.0, -30.0]))
-                stock_max = np.array(stock_cfg.get('max', [60.0, 60.0, 0.0]))
-                resolution = float(stock_cfg.get('resolution', 2.0))
-
+            stock_min, stock_max, resolution, _ = self._get_active_stock_config()
             self._stock_model = StockModel(stock_min, stock_max, resolution)
+            self._sync_stock_settings_panel()
 
             # 3. 가공 수치 모델 해석 (스핀들 부하 + 채터 위험도)
             if self._machining_model is None:
                 self._machining_model = MachiningModel()
             self._machining_analysis = self._machining_model.analyze_toolpath(
-                self._toolpath, self._tools
+                self._toolpath, self._tools, self._stock_model
             )
 
             # 4. NC 코드 검증
@@ -379,6 +384,7 @@ class MainWindow(QMainWindow):
 
             # 5. 시뮬레이션 상태 초기화
             self._machine_state.load_toolpath(self._toolpath)
+            self._reset_simulation_stock()
             est_time = self._time_estimator.estimate_total_time(self._toolpath, self._machine)
             self._toolpath.estimated_time = est_time
 
@@ -387,8 +393,7 @@ class MainWindow(QMainWindow):
 
             # 7. 상태 바 업데이트
             filename = os.path.basename(filepath)
-            error_count = sum(1 for w in self._warnings if w.severity == "ERROR")
-            warning_count = sum(1 for w in self._warnings if w.severity == "WARNING")
+            self._update_status_summary()
 
             analysis = self._machining_analysis
             self._status_file_label.setText(
@@ -418,7 +423,7 @@ class MainWindow(QMainWindow):
                                  f"NC 파일 로드 중 오류가 발생했습니다:\n{str(e)}")
             self._statusbar.showMessage("로드 실패", 3000)
 
-    def load_project(self, filepath: str):
+    def _legacy_load_project_unused(self, filepath: str):
         """프로젝트 파일을 로드합니다."""
         try:
             self._project_config = self._project_service.load_project(filepath)
@@ -430,6 +435,255 @@ class MainWindow(QMainWindow):
             logger.error(f"프로젝트 로드 실패: {e}", exc_info=True)
             QMessageBox.critical(self, "프로젝트 오류", f"프로젝트 파일 로드 중 오류:\n{str(e)}")
 
+    def load_nc_file(self, filepath: str):
+        """
+        NC 파일을 로드하고 전체 시뮬레이션 파이프라인을 다시 계산합니다.
+
+        처리 순서:
+        1. G코드 파싱
+        2. 소재 설정 기준으로 스톡 모델 생성
+        3. AE/AP-aware 가공 해석 수행
+        4. 검증 규칙 실행
+        5. 재생 상태 및 UI 갱신
+        """
+        if not os.path.exists(filepath):
+            QMessageBox.critical(self, "파일 오류", f"파일을 찾을 수 없습니다:\n{filepath}")
+            return
+
+        logger.info("NC 파일 로드: %s", filepath)
+        self._statusbar.showMessage(f"파싱 중: {os.path.basename(filepath)}...")
+        QApplication.processEvents()
+
+        try:
+            self._toolpath = self._gcode_parser.parse_file(filepath)
+            self._statusbar.showMessage(
+                f"파싱 완료 ({len(self._toolpath.segments)}개 세그먼트), 가공 해석 계산 중..."
+            )
+            QApplication.processEvents()
+
+            stock_min, stock_max, resolution, _ = self._get_active_stock_config()
+            self._stock_model = StockModel(stock_min, stock_max, resolution)
+            self._sync_stock_settings_panel()
+
+            if self._machining_model is None:
+                self._machining_model = MachiningModel()
+            self._machining_analysis = self._machining_model.analyze_toolpath(
+                self._toolpath,
+                self._tools,
+                self._stock_model,
+            )
+
+            self._statusbar.showMessage("검증 중...")
+            QApplication.processEvents()
+            self._warnings = self._verifier.run_all_checks(
+                self._toolpath,
+                self._stock_model,
+                self._machine,
+                self._tools,
+            )
+
+            self._machine_state.load_toolpath(self._toolpath)
+            self._reset_simulation_stock()
+            estimated_time = self._time_estimator.estimate_total_time(self._toolpath, self._machine)
+            self._toolpath.estimated_time = estimated_time
+
+            self._update_all_widgets()
+            self._update_status_summary()
+
+            filename = os.path.basename(filepath)
+            self._statusbar.showMessage(f"로드 완료: {filename}", 3000)
+            logger.info("NC 파일 로드 완료: %s", filename)
+
+        except Exception as exc:
+            logger.error("NC 파일 로드 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "로드 오류",
+                f"NC 파일 로드 중 오류가 발생했습니다:\n{str(exc)}",
+            )
+            self._statusbar.showMessage("로드 실패", 3000)
+
+    def load_project(self, filepath: str):
+        """프로젝트 파일을 로드합니다."""
+        try:
+            self._project_config = self._project_service.load_project(filepath)
+            self._machine = self._project_config.machine_config
+            self._tools = self._project_config.get_tools_dict()
+            self._sync_stock_settings_panel()
+
+            if self._project_config.nc_file_path:
+                self.load_nc_file(self._project_config.nc_file_path)
+                return
+
+            stock_min, stock_max, resolution, _ = self._get_active_stock_config()
+            self._stock_model = StockModel(stock_min, stock_max, resolution)
+            self._reset_simulation_stock()
+
+            stock_size = stock_max - stock_min
+            self._status_file_label.setText(
+                f"프로젝트: {self._project_config.project_name}  |  "
+                f"소재 크기: {stock_size[0]:.1f} x {stock_size[1]:.1f} x {stock_size[2]:.1f} mm"
+            )
+            self._status_warning_label.setText("")
+            self._statusbar.showMessage("프로젝트 로드 완료", 3000)
+        except Exception as exc:
+            logger.error("프로젝트 로드 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "프로젝트 오류",
+                f"프로젝트 파일 로드 중 오류:\n{str(exc)}",
+            )
+
+    def _get_active_stock_config(self) -> tuple[np.ndarray, np.ndarray, float, str]:
+        """현재 프로젝트 또는 기본 설정에서 활성 소재 범위를 가져옵니다."""
+        if self._project_config is not None:
+            return (
+                np.array(self._project_config.stock_min, dtype=float),
+                np.array(self._project_config.stock_max, dtype=float),
+                float(self._project_config.stock_resolution),
+                self._project_config.stock_origin_mode,
+            )
+
+        stock_cfg = self._sim_options.get("stock", {})
+        resolution = float(stock_cfg.get("resolution", 2.0))
+        origin_mode = normalize_stock_origin_mode(stock_cfg.get("origin_mode", "top_center"))
+
+        if "origin" in stock_cfg and "size" in stock_cfg:
+            stock_min, stock_max = compute_stock_bounds_from_origin(
+                stock_cfg.get("origin"),
+                stock_cfg.get("size"),
+                origin_mode,
+            )
+        else:
+            stock_min = np.array(stock_cfg.get("min", [-60.0, -60.0, -30.0]), dtype=float)
+            stock_max = np.array(stock_cfg.get("max", [60.0, 60.0, 0.0]), dtype=float)
+
+        return stock_min, stock_max, resolution, origin_mode
+
+    def _sync_stock_settings_panel(self):
+        """현재 소재 설정을 우측 패널에 반영합니다."""
+        if not hasattr(self, "_stock_settings_panel"):
+            return
+
+        stock_min, stock_max, resolution, origin_mode = self._get_active_stock_config()
+        self._stock_settings_panel.set_stock_config(
+            stock_min,
+            stock_max,
+            resolution,
+            origin_mode=origin_mode,
+        )
+
+    def _apply_stock_settings_to_project(self, settings: dict):
+        """패널 입력값을 프로젝트 또는 기본 시뮬레이션 설정에 반영합니다."""
+        if self._project_config is not None:
+            self._project_config.set_stock_from_origin(
+                settings["origin"],
+                settings["size"],
+                settings["origin_mode"],
+            )
+            self._project_config.stock_resolution = float(settings["resolution"])
+            return
+
+        stock_cfg = self._sim_options.setdefault("stock", {})
+        stock_cfg["min"] = settings["min"].tolist()
+        stock_cfg["max"] = settings["max"].tolist()
+        stock_cfg["origin"] = settings["origin"].tolist()
+        stock_cfg["size"] = settings["size"].tolist()
+        stock_cfg["origin_mode"] = settings["origin_mode"]
+        stock_cfg["resolution"] = float(settings["resolution"])
+
+    def _recompute_stock_dependent_state(self):
+        """소재 변경 시 스톡 기반 해석과 검증을 다시 수행합니다."""
+        if self._stock_model is None:
+            return
+
+        if self._toolpath is None:
+            self._reset_simulation_stock()
+            return
+
+        self._statusbar.showMessage("소재 기준으로 가공 해석 재계산 중...")
+        QApplication.processEvents()
+
+        if self._machining_model is None:
+            self._machining_model = MachiningModel()
+
+        self._machining_analysis = self._machining_model.analyze_toolpath(
+            self._toolpath,
+            self._tools,
+            self._stock_model,
+        )
+        self._warnings = self._verifier.run_all_checks(
+            self._toolpath,
+            self._stock_model,
+            self._machine,
+            self._tools,
+        )
+
+        completed = min(self._machine_state.completed_segments, len(self._toolpath.segments))
+        self._rebuild_simulation_stock(completed)
+        self._update_all_widgets()
+        self._update_status_summary()
+        self._statusbar.showMessage("소재 설정 반영 완료", 3000)
+
+    def _update_status_summary(self):
+        """상태바 요약 정보를 갱신합니다."""
+        if self._toolpath is None or self._machining_analysis is None:
+            return
+
+        error_count = sum(1 for warning in self._warnings if warning.severity == "ERROR")
+        warning_count = sum(1 for warning in self._warnings if warning.severity == "WARNING")
+        analysis = self._machining_analysis
+        filename = os.path.basename(self._toolpath.source_file) if self._toolpath.source_file else "메모리"
+
+        self._status_file_label.setText(
+            f"파일: {filename}  |  "
+            f"세그먼트: {len(self._toolpath.segments)}  |  "
+            f"최대부하 {analysis.max_spindle_load_pct:.1f}%  |  "
+            f"최대채터 {analysis.max_chatter_risk * 100:.1f}%  |  "
+            f"최대합성진동 {analysis.max_resultant_vibration_um:.2f} um  |  "
+            f"오류/경고: {error_count}/{warning_count}"
+        )
+
+        if error_count > 0:
+            self._status_warning_label.setText(f"오류 {error_count}개")
+            self._status_warning_label.setStyleSheet("color: #ff4444;")
+        elif warning_count > 0:
+            self._status_warning_label.setText(f"경고 {warning_count}개")
+            self._status_warning_label.setStyleSheet("color: #ffaa00;")
+        else:
+            self._status_warning_label.setText("검증 통과")
+            self._status_warning_label.setStyleSheet("color: #44ff44;")
+
+    def _on_stock_settings_applied(self, settings: dict):
+        """소재 패널의 적용 버튼을 누르면 스톡/해석/UI를 모두 갱신합니다."""
+        try:
+            self._on_pause()
+            self._apply_stock_settings_to_project(settings)
+
+            self._stock_model = StockModel(
+                np.array(settings["min"], dtype=float),
+                np.array(settings["max"], dtype=float),
+                float(settings["resolution"]),
+            )
+            self._reset_simulation_stock()
+            self._sync_stock_settings_panel()
+            self._recompute_stock_dependent_state()
+
+            if self._toolpath is None:
+                size = settings["size"]
+                self._status_file_label.setText(
+                    f"소재 크기: {size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm  |  "
+                    f"원점 기준: {settings['origin_mode']}"
+                )
+                self._statusbar.showMessage("소재 설정 적용 완료", 3000)
+        except Exception as exc:
+            logger.error("소재 설정 적용 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "소재 설정 오류",
+                f"소재 설정 적용 중 오류가 발생했습니다:\n{str(exc)}",
+            )
+
     def _update_all_widgets(self):
         """모든 위젯을 현재 데이터로 업데이트합니다."""
         if self._toolpath is None:
@@ -437,8 +691,8 @@ class MainWindow(QMainWindow):
 
         # 3D 뷰어 업데이트
         self._viewer.set_toolpath(self._toolpath)
-        if self._stock_model:
-            self._viewer.set_stock(self._stock_model)
+        if self._simulation_stock_model:
+            self._viewer.set_stock(self._simulation_stock_model)
 
         # 가공 해석 차트 업데이트
         if self._machining_analysis:
@@ -461,6 +715,7 @@ class MainWindow(QMainWindow):
 
         idx = self._machine_state.current_segment_index
         total = self._machine_state.total_segments
+        completed = self._machine_state.completed_segments
         pos = self._machine_state.current_position
         tool_num = self._machine_state.current_tool
 
@@ -475,31 +730,38 @@ class MainWindow(QMainWindow):
 
         # 공구 정보 패널 업데이트
         self._tool_info_panel.update_tool(current_tool)
-        self._tool_info_panel.update_machining_state(
-            feedrate, spindle_speed, motion_type, spindle_on
-        )
 
         # 현재까지 이동 거리 계산
-        traveled_dist = sum(s.get_distance() for s in self._toolpath.segments[:idx])
+        traveled_dist = sum(s.get_distance() for s in self._toolpath.segments[:completed])
         cutting_dist = sum(
-            s.get_distance() for s in self._toolpath.segments[:idx]
+            s.get_distance() for s in self._toolpath.segments[:completed]
             if s.is_cutting_move
         )
 
         # 현재 블록의 가공 해석 결과 가져오기 (공구 정보 패널에 표시)
-        if self._machining_analysis and idx < len(self._machining_analysis.results):
-            mr = self._machining_analysis.results[idx]
+        current_result = None
+        result_idx = idx
+        if completed > 0:
+            result_idx = min(completed - 1, len(self._machining_analysis.results) - 1) if self._machining_analysis else idx
+        if self._machining_analysis and result_idx < len(self._machining_analysis.results):
+            mr = self._machining_analysis.results[result_idx]
+            current_result = mr
             # 가공 모델 계산값으로 이송속도/주축속도 보완
             if mr.is_cutting:
                 spindle_speed = mr.spindle_speed
                 feedrate = mr.feedrate
 
+        self._tool_info_panel.update_machining_state(
+            feedrate, spindle_speed, motion_type, spindle_on
+        )
+
         self._tool_info_panel.update_stats(
             self._machine_state.elapsed_time, traveled_dist, cutting_dist
         )
+        self._tool_info_panel.update_analysis(current_result)
 
         # 가공 해석 패널 현재 블록 표시
-        self._analysis_panel.update_current_block(idx)
+        self._analysis_panel.update_current_block(result_idx)
 
         # 시뮬레이션 제어 업데이트
         self._sim_controls.update_status(idx, total, line_num, tool_num, pos,
@@ -522,6 +784,7 @@ class MainWindow(QMainWindow):
             return
         if self._machine_state.is_at_end():
             self._machine_state.reset()
+            self._reset_simulation_stock()
         self._is_playing = True
         self._sim_controls.set_playing(True)
         interval = max(16, int(100 / max(0.1, self._play_speed)))
@@ -537,13 +800,17 @@ class MainWindow(QMainWindow):
         """정지 및 처음으로"""
         self._on_pause()
         self._machine_state.reset()
+        self._reset_simulation_stock()
         self._update_ui_for_current_segment()
 
     def _on_step_forward(self):
         """한 단계 앞으로"""
         if self._toolpath is None:
             return
+        prev_completed = self._machine_state.completed_segments
         moved = self._machine_state.step_forward()
+        if moved:
+            self._apply_simulation_segment(prev_completed)
         if not moved:
             self._on_pause()
         self._update_ui_for_current_segment()
@@ -553,6 +820,7 @@ class MainWindow(QMainWindow):
         if self._toolpath is None:
             return
         self._machine_state.step_backward()
+        self._rebuild_simulation_stock(self._machine_state.completed_segments)
         self._update_ui_for_current_segment()
 
     def _on_jump_to(self, index: int):
@@ -560,6 +828,7 @@ class MainWindow(QMainWindow):
         if self._toolpath is None:
             return
         self._machine_state.jump_to(index)
+        self._rebuild_simulation_stock(self._machine_state.completed_segments)
         self._update_ui_for_current_segment()
 
     def _on_speed_changed(self, speed: float):
@@ -574,10 +843,62 @@ class MainWindow(QMainWindow):
         if self._toolpath is None:
             self._on_pause()
             return
+        prev_completed = self._machine_state.completed_segments
         moved = self._machine_state.step_forward()
+        if moved:
+            self._apply_simulation_segment(prev_completed)
         if not moved:
             self._on_pause()
         self._update_ui_for_current_segment()
+
+    def _reset_simulation_stock(self):
+        """재생용 스톡을 초기 상태로 되돌립니다."""
+        if self._stock_model is None:
+            self._simulation_stock_model = None
+            return
+        self._simulation_stock_model = self._stock_model.copy()
+        self._viewer.set_stock(self._simulation_stock_model)
+
+    def _segment_metrics(self, segment_index: int) -> dict | None:
+        """세그먼트의 부하/채터 정보를 흔적 맵에 함께 기록하기 위한 메타데이터를 반환합니다."""
+        if self._machining_analysis is None:
+            return None
+        if segment_index < 0 or segment_index >= len(self._machining_analysis.results):
+            return None
+        result = self._machining_analysis.results[segment_index]
+        return {
+            "spindle_load_pct": result.spindle_load_pct,
+            "chatter_risk_score": result.chatter_risk_score,
+        }
+
+    def _apply_simulation_segment(self, segment_index: int):
+        """재생용 스톡에 단일 세그먼트를 누적 반영합니다."""
+        if self._simulation_stock_model is None or self._toolpath is None:
+            return
+        self._material_removal.simulate_step(
+            segment_index,
+            self._toolpath,
+            self._simulation_stock_model,
+            self._tools,
+            self._segment_metrics(segment_index),
+        )
+        self._viewer.set_stock(self._simulation_stock_model)
+
+    def _rebuild_simulation_stock(self, completed_segments: int):
+        """특정 재생 위치까지의 가공 흔적을 처음부터 다시 누적합니다."""
+        self._reset_simulation_stock()
+        if self._simulation_stock_model is None or self._toolpath is None:
+            return
+
+        for i in range(max(0, completed_segments)):
+            self._material_removal.simulate_step(
+                i,
+                self._toolpath,
+                self._simulation_stock_model,
+                self._tools,
+                self._segment_metrics(i),
+            )
+        self._viewer.set_stock(self._simulation_stock_model)
 
     # ====================================================
     # 뷰어 색상 모드 변경

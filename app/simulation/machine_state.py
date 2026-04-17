@@ -86,11 +86,11 @@ class MachineState:
             return False
 
         total = len(self._toolpath.segments)
-        if self._current_index >= total - 1:
-            # 마지막 세그먼트에 도달
+        if self._current_index >= total:
+            # 이미 마지막 세그먼트까지 모두 적용된 상태
             return False
 
-        # 현재 세그먼트를 완료하고 다음으로 이동
+        # 현재 인덱스의 세그먼트를 적용하고 다음 인덱스로 진행
         current_seg = self._toolpath.segments[self._current_index]
         self._apply_segment(current_seg)
         self._current_index += 1
@@ -158,7 +158,7 @@ class MachineState:
             return 0.0
 
         total = len(self._toolpath.segments)
-        return self._current_index / total
+        return min(1.0, self._current_index / total)
 
     def get_current_segment(self) -> Optional[MotionSegment]:
         """현재 세그먼트를 반환합니다."""
@@ -172,7 +172,7 @@ class MachineState:
         """재생이 끝까지 도달했는지 확인합니다."""
         if not self._toolpath:
             return True
-        return self._current_index >= len(self._toolpath.segments) - 1
+        return self._current_index >= len(self._toolpath.segments)
 
     def _apply_segment(self, segment: MotionSegment):
         """
@@ -206,7 +206,16 @@ class MachineState:
     @property
     def current_segment_index(self) -> int:
         """현재 세그먼트 인덱스"""
-        return self._current_index
+        if self._toolpath and self._toolpath.segments:
+            return min(self._current_index, len(self._toolpath.segments) - 1)
+        return 0
+
+    @property
+    def completed_segments(self) -> int:
+        """현재까지 적용이 완료된 세그먼트 수"""
+        if self._toolpath:
+            return min(self._current_index, len(self._toolpath.segments))
+        return 0
 
     @property
     def current_position(self) -> np.ndarray:

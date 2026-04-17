@@ -1,5 +1,4 @@
 # CNC 시뮬레이터 프로젝트 파일 예제
-# 단순 포켓 가공 시뮬레이션 프로젝트
 project_name: "단순 포켓 가공 프로젝트"
 version: "1.0"
 
@@ -18,15 +17,19 @@ machine:
   rapid_feedrate: 15000.0
 
 # 소재 설정
+# origin_mode 기준으로 origin과 size를 입력하면 min/max는 자동 계산됩니다.
 stock:
+  origin_mode: top_center
+  origin: [0.0, 0.0, 0.0]
+  size: [120.0, 120.0, 30.0]
   min: [-60.0, -60.0, -30.0]
   max: [60.0, 60.0, 0.0]
   resolution: 2.0
 
-# 공구 설정 (이 프로젝트에서 사용할 공구만 정의)
+# 공구 설정
 tools:
   - tool_number: 1
-    name: "플랫 엔드밀 φ10"
+    name: "플랫 엔드밀 Ø10"
     tool_type: "END_MILL"
     diameter: 10.0
     length: 75.0

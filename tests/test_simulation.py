@@ -68,9 +68,26 @@ def test_machine_state_at_end():
 
     # 처음 단계 이동은 성공
     assert ms.step_forward() == True
-    # 마지막에서 이동 시도
+    # 마지막 세그먼트도 한 번 더 적용되어야 함
+    assert ms.step_forward() == True
+    # 모두 적용된 이후에는 더 이상 진행되지 않아야 함
     result = ms.step_forward()
     assert result == False
+
+
+def test_machine_state_applies_last_segment():
+    """마지막 세그먼트도 실제로 적용되어 끝점까지 도달해야 한다."""
+    code = "G1 X10.0 F500\nG1 X20.0 F500"
+    parser = GCodeParser()
+    tp = parser.parse_string(code)
+    ms = MachineState()
+    ms.load_toolpath(tp)
+
+    assert ms.step_forward() is True
+    assert ms.step_forward() is True
+    assert ms.current_position[0] == pytest.approx(20.0, abs=0.01)
+    assert ms.completed_segments == len(tp.segments)
+    assert ms.is_at_end() is True
 
 
 def test_machine_state_jump_to():

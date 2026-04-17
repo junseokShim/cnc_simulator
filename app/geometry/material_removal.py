@@ -31,7 +31,8 @@ class MaterialRemovalSimulator:
         self._removed_cells = 0
 
     def simulate(self, toolpath: Toolpath, stock: StockModel,
-                 tools: Dict[int, Tool]) -> StockModel:
+                 tools: Dict[int, Tool],
+                 analysis_results: Dict[int, dict] | None = None) -> StockModel:
         """
         전체 공구경로에 대해 재료 제거를 시뮬레이션합니다.
 
@@ -81,6 +82,11 @@ class MaterialRemovalSimulator:
                 self._processed_segments += 1
                 continue
 
+            if not segment.spindle_on:
+                # 주축 정지 상태의 이동은 가공 흔적으로 반영하지 않습니다.
+                self._processed_segments += 1
+                continue
+
             # 현재 세그먼트에 사용되는 공구 조회
             current_tool = tools.get(segment.tool_number)
             if current_tool is None:
@@ -92,11 +98,15 @@ class MaterialRemovalSimulator:
                 continue
 
             # 원호 이동은 여러 직선 구간으로 분할하여 처리
+            seg_metrics = analysis_results.get(segment.segment_id) if analysis_results else None
+
             if segment.is_arc:
-                self._remove_arc_material(segment, stock, current_tool)
+                self._remove_arc_material(segment, stock, current_tool, seg_metrics)
             else:
                 # 직선 이동: 직접 재료 제거
-                stock.remove_material(segment.start_pos, segment.end_pos, current_tool)
+                stock.remove_material(
+                    segment.start_pos, segment.end_pos, current_tool, seg_metrics
+                )
 
             cutting_count += 1
             self._processed_segments += 1
@@ -114,7 +124,8 @@ class MaterialRemovalSimulator:
 
         return stock
 
-    def _remove_arc_material(self, segment, stock: StockModel, tool: Tool):
+    def _remove_arc_material(self, segment, stock: StockModel, tool: Tool,
+                             segment_metrics: dict | None = None):
         """
         원호 이동에 대한 재료 제거를 수행합니다.
         원호를 여러 직선 구간으로 분할하여 처리합니다.
@@ -126,7 +137,7 @@ class MaterialRemovalSimulator:
         """
         if segment.arc_center is None or segment.arc_radius is None:
             # 원호 정보가 없으면 직선으로 처리
-            stock.remove_material(segment.start_pos, segment.end_pos, tool)
+            stock.remove_material(segment.start_pos, segment.end_pos, tool, segment_metrics)
             return
 
         from app.utils.math_utils import calc_arc_angle
@@ -149,10 +160,11 @@ class MaterialRemovalSimulator:
 
         # 각 구간에 대해 재료 제거
         for i in range(len(points) - 1):
-            stock.remove_material(points[i], points[i + 1], tool)
+            stock.remove_material(points[i], points[i + 1], tool, segment_metrics)
 
     def simulate_step(self, segment_index: int, toolpath: Toolpath,
-                      stock: StockModel, tools: Dict[int, Tool]):
+                      stock: StockModel, tools: Dict[int, Tool],
+                      segment_metrics: dict | None = None):
         """
         단일 세그먼트의 재료 제거를 수행합니다.
         실시간 시뮬레이션 재생 시 사용됩니다.
@@ -171,11 +183,14 @@ class MaterialRemovalSimulator:
         if segment.motion_type == MotionType.RAPID or segment.motion_type == MotionType.DWELL:
             return
 
+        if not segment.spindle_on:
+            return
+
         current_tool = tools.get(segment.tool_number)
         if current_tool is None:
             return
 
         if segment.is_arc:
-            self._remove_arc_material(segment, stock, current_tool)
+            self._remove_arc_material(segment, stock, current_tool, segment_metrics)
         else:
-            stock.remove_material(segment.start_pos, segment.end_pos, current_tool)
+            stock.remove_material(segment.start_pos, segment.end_pos, current_tool, segment_metrics)

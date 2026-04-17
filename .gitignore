@@ -1,3 +1,15 @@
 venn/
+venv/
 .DS_Store
+
+# Python 캐시
+__pycache__/
+*.py[cod]
+
+# 테스트/실행 부산물
+.pytest_cache/
+pytest-cache-files-*/
+
+# 로그
+logs/*.log
 

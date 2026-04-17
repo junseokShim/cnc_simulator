@@ -1,89 +1,118 @@
 # 시뮬레이션 옵션 설정 파일
-# 시뮬레이션 동작과 표시 방식을 설정합니다.
+# 가공 해석, 스톡(소재), 표시 방식, 재생 속도를 제어합니다.
 
 # 소재(스톡) 기본 설정
 stock:
-  # 소재 최소 모서리 [X, Y, Z] (mm) - 소재의 한쪽 끝
+  # 원점 기준:
+  # - top_center: 상면 중심
+  # - top_min_corner: 상면 최소 코너
+  # - bottom_center: 바닥 중심
+  # - bottom_min_corner: 바닥 최소 코너
+  # - center: 소재 중심
+  origin_mode: top_center
+
+  # 프로그램 원점 또는 사용자가 지정한 소재 원점 좌표 [X, Y, Z] (mm)
+  origin: [0.0, 0.0, 0.0]
+
+  # 소재 실제 크기 [X, Y, Z] (mm)
+  size: [120.0, 120.0, 30.0]
+
+  # 역호환용 min/max도 함께 유지합니다.
+  # origin/size가 있으면 우선 사용됩니다.
   min: [-60.0, -60.0, -30.0]
-  # 소재 최대 모서리 [X, Y, Z] (mm) - 소재의 반대쪽 끝
   max: [60.0, 60.0, 0.0]
-  # Z-맵 격자 해상도 (mm/셀)
-  # 작을수록 정밀하지만 메모리와 계산 시간이 증가합니다.
+
+  # Z-map 격자 해상도 (mm/셀)
+  # 작게 할수록 footprint가 더 세밀해지지만 메모리/계산량이 증가합니다.
   resolution: 2.0
 
 # 검증 규칙 설정
 verification:
-  # 급속 이동(G0)이 소재 내부로 진입하는지 검사
   check_rapid_into_stock: true
-  # 이동 위치가 머신 이동 범위를 초과하는지 검사
   check_out_of_bounds: true
-  # 참조된 공구가 공구 라이브러리에 정의되어 있는지 검사
   check_missing_tool: true
-  # 주축 정지 상태에서 절삭 이동이 발생하는지 검사
   check_spindle_off: true
-  # 단일 이동에서 허용되는 최대 Z 하강량 (mm)
   z_plunge_threshold: 15.0
 
-# 3D 뷰어 표시 설정
+# 3D/2D 표시 설정
 display:
-  # 공구경로 선 굵기 (픽셀)
   toolpath_line_width: 2.0
-  # 급속 이동 선 색상 [R, G, B] (0.0~1.0)
   rapid_color: [0.2, 0.5, 1.0]
-  # 절삭 이동 선 색상 [R, G, B]
   cutting_color: [0.2, 0.9, 0.3]
-  # 원호 이동 선 색상 [R, G, B]
   arc_color: [1.0, 0.8, 0.2]
-  # 3D 뷰어 배경색 [R, G, B]
   background_color: [0.15, 0.15, 0.18]
 
-# 시뮬레이션 재생 설정
+# 재생 설정
 playback:
-  # 기본 재생 속도 배율 (1.0 = 정상 속도)
   default_speed: 1.0
-  # 최대 재생 속도 배율
   max_speed: 10.0
-  # 최소 재생 속도 배율
   min_speed: 0.1
-  # 타이머 기본 간격 (ms)
   timer_interval: 100
 
-# 3축 가공 수치 모델 파라미터
-# [중요] 이 값들은 공학적 근사 모델의 계수입니다.
-# 실제 가공 환경에 맞게 조정하세요.
+# AE/AP-aware 가공 해석 모델 설정
+# [중요] 아래 값들은 산업용 실측값이 아니라 공학적 근사 모델용 계수입니다.
+# 실제 설비 특성에 맞춰 보정하면서 사용하는 것을 권장합니다.
 machining:
-  # 가공 재료: aluminum | steel_mild | steel_hard | stainless | titanium | cast_iron | default
-  material: "aluminum"
+  # 재료: aluminum | steel_mild | steel_hard | stainless | titanium | cast_iron | default
+  material: aluminum
 
-  # 머신 강성 계수 (1.0 = 표준 VMC, 0.7 = 연약한 머신, 1.3 = 고강성 머신)
-  # 낮을수록 채터 위험도 증가
+  # 기계/공구 계수
   machine_stiffness: 1.0
-
-  # 공구 돌출 계수 (1.0 = L/D < 3 표준, 1.5 = L/D 4~6, 2.0 = L/D > 6)
-  # 높을수록 채터 위험도 증가
   tool_overhang_factor: 1.0
 
-  # 스핀들 정격 출력 (W) - 부하 백분율 계산 기준
+  # 스핀들 정격
   spindle_rated_power_w: 7500.0
+  spindle_efficiency: 0.82
 
-  # 기본 반경방향 맞물림 비율 (ae/D): 0.5 = 공구 직경의 50%
-  # 평면 포켓: 0.5~0.7, 측면 가공: 0.1~0.3
+  # fallback 절삭 조건
   default_ae_ratio: 0.5
-
-  # Z 변화 없는 구간의 기본 축방향 절입 깊이 (mm)
   default_ap_mm: 2.0
-
-  # 기본 날 수 (공구 정의 없을 때)
   default_flute_count: 4
 
-  # 채터 민감도 배율 (1.0 = 표준, 높을수록 더 보수적 평가)
-  chatter_sensitivity: 1.0
+  # 절삭 해석 기준
+  min_chip_thickness_mm: 0.01
+  reference_chipload_mm: 0.06
+  reference_mrr_mm3_min: 16000.0
+  engagement_sample_count: 7
 
-  # 스핀들 부하 지수 이동 평균 계수 (0.0~1.0, 클수록 덜 평활화)
+  # 진입 보정 계수
+  entry_force_multiplier: 1.15
+  plunge_force_multiplier: 1.40
+  ramp_force_multiplier: 1.20
+
+  # 축력 분해 계수
+  radial_force_ratio_base: 0.42
+  radial_force_ratio_gain: 0.22
+  axial_force_ratio_base: 0.18
+  axial_force_ratio_gain: 0.30
+
+  # 축 강성 (N/um)
+  # 기계가 더 강성일수록 같은 힘에서도 진동값이 작게 계산됩니다.
+  x_axis_stiffness_n_per_um: 60.0
+  y_axis_stiffness_n_per_um: 58.0
+  z_axis_stiffness_n_per_um: 85.0
+
+  # 동적 증폭 계수
+  dynamic_vibration_gain: 0.85
+  chatter_sensitivity: 1.0
   load_smoothing_alpha: 0.3
 
-  # 채터 위험도 가중치 (합계 ≒ 1.0 권장)
-  w_engagement: 0.35      # 맞물림 깊이 위험도 가중치
-  w_speed: 0.20           # 절삭 속도 위험도 가중치
-  w_direction_change: 0.20 # 방향 전환 위험도 가중치
-  w_plunge: 0.25          # 절입 위험도 가중치
+  # 채터 위험도 가중치
+  w_engagement: 0.25
+  w_speed: 0.10
+  w_direction_change: 0.14
+  w_plunge: 0.16
+  w_force: 0.18
+  w_load_change: 0.10
+  w_chipload: 0.07
+
+  # 공격 절삭 / 경보 기준
+  high_load_threshold_pct: 80.0
+  aggressive_ap_ratio: 0.50
+  aggressive_ae_ratio: 0.65
+  unstable_chatter_threshold: 0.65
+
+  # 축별 진동 경보 기준 (um)
+  xy_vibration_warning_um: 12.0
+  z_vibration_warning_um: 9.0
+  resultant_vibration_warning_um: 16.0
