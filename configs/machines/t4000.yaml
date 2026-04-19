@@ -1,0 +1,60 @@
+# DN Solutions T4000 공작기계 프로파일
+# DN Solutions T4000 수직 머시닝센터 특성 파라미터
+#
+# [공식 사양 기반]
+# - 스핀들: 표준 12,000 RPM / 옵션 18,000 RPM
+# - 테이퍼: ISO #30 (BT30)
+# - 이동 범위: X=520mm, Y=400mm, Z=350mm
+# - 급속 이송: 56 m/min
+# - 스핀들 출력: 7.5/11 kW (연속/순간)
+#
+# [확장 방법]
+# 새 기계 추가 시: configs/machines/ 에 새 YAML 파일 생성 후
+# MachineProfileRegistry.load_from_directory() 호출만 하면 됩니다.
+
+machine_profile:
+  name: "DN Solutions T4000"
+  manufacturer: "DN Solutions"
+  model_id: "t4000"
+  description: "DN Solutions T4000 수직 머시닝센터 - BT30 테이퍼, 12,000 RPM 스핀들"
+
+  # ---- 스핀들 특성 ----
+  spindle_max_rpm: 12000.0           # 표준 최대 회전수 (옵션: 18000)
+  spindle_rated_power_w: 7500.0      # 연속 정격 출력 (W)
+  spindle_peak_power_w: 11000.0      # 순간 최대 출력 (W)
+  spindle_max_torque_nm: 50.0        # 최대 토크 (N·m)
+  spindle_taper: "BT30"             # ISO #30 테이퍼
+
+  # ---- 이송 축 특성 ----
+  x_travel_mm: 520.0                 # X축 이동량 (mm)
+  y_travel_mm: 400.0                 # Y축 이동량 (mm)
+  z_travel_mm: 350.0                 # Z축 이동량 (mm)
+  rapid_traverse_mm_min: 56000.0     # 급속 이송 최대 속도 (mm/min = 56 m/min)
+
+  # ---- 기계 강성 / 동특성 파라미터 ----
+  # BT30 홀더 + T4000 주축 구조 기반 추정값
+  # FRF 측정값이 있으면 아래 세 항목을 실측치로 교체하세요.
+  machine_stiffness_factor: 1.05     # 기계 강성 배율 (BT40 대비 약간 낮음)
+  damping_ratio: 0.03                # 구조 감쇠비 ζ (전형 범위: 0.02~0.08)
+  tool_tip_stiffness_n_per_um: 22.0  # 공구 끝단 강성 N/μm (BT30 중간 돌출 기준)
+  natural_frequency_hz: 900.0        # 공구-스핀들 시스템 고유주파수 Hz
+  chatter_sensitivity: 0.95          # 채터 민감도 계수 (T4000: 약간 낮은 민감도)
+
+  # ---- 스핀들 부하 분해 파라미터 ----
+  # 스핀들 무부하 기저 전력비 (정격 출력 대비 분율)
+  # 스핀들 회전 마찰, 베어링 손실, 냉각팬 등
+  baseline_power_ratio: 0.07         # 7% (~525W / 7500W)
+
+  # 축 이송 소비 전력비 (급속 이송 전속 대비 추가 부하)
+  axis_motion_power_ratio: 0.04      # 4% (급속 이송 기준)
+
+  # 기계 전달 효율 (스핀들 출력 → 절삭 전력)
+  machine_efficiency: 0.85           # 85%
+
+  # ---- 공구 홀더 강성 프록시 ----
+  tool_holder_rigidity: 1.05         # BT30 홀더 강성 (BT40 대비 약간 낮음)
+
+  # ---- 안정성 로브선도 보정 계수 ----
+  # 기계 구조 특성에 의한 임계 절입 깊이(ap_lim) 보정
+  # >1.0 : 실제 ap_lim이 이론값보다 큼 (더 안정적)
+  stability_lobe_correction: 1.02    # 2% 향상 (T4000 고강성 칼럼 구조)

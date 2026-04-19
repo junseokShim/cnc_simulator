@@ -63,6 +63,10 @@ class StockModel:
         self.load_map = np.zeros((self._nx, self._ny), dtype=float)
         self.chatter_map = np.zeros((self._nx, self._ny), dtype=float)
 
+        # RGBA 이미지 캐시 (재료 제거가 있을 때만 재생성)
+        self._rgba_dirty: bool = True
+        self._rgba_cache: dict = {}  # mode -> np.ndarray
+
         logger.debug(
             f"소재 모델 생성: {self._nx}x{self._ny} 격자, "
             f"해상도 {resolution}mm, "
@@ -82,6 +86,9 @@ class StockModel:
         copied.pass_count_grid = self.pass_count_grid.copy()
         copied.load_map = self.load_map.copy()
         copied.chatter_map = self.chatter_map.copy()
+        # 새 복사본은 항상 dirty 상태로 시작 (캐시를 공유하지 않음)
+        copied._rgba_dirty = True
+        copied._rgba_cache = {}
         return copied
 
     def _world_to_grid(self, x: float, y: float) -> Tuple[int, int]:
@@ -109,6 +116,11 @@ class StockModel:
         y = self.min_corner[1] + (iy + 0.5) * self.resolution
         return x, y
 
+    def _mark_rgba_dirty(self):
+        """RGBA 이미지 캐시를 무효화합니다."""
+        self._rgba_dirty = True
+        self._rgba_cache.clear()
+
     def remove_material(self, start: np.ndarray, end: np.ndarray, tool: Tool,
                         segment_metrics: Optional[dict] = None):
         """
@@ -118,6 +130,9 @@ class StockModel:
         - 평면 XY로 투영한 공구 스윕 영역 안의 셀을 절삭 후보로 봅니다.
         - 해당 셀의 공구 끝점 Z보다 현재 스톡 높이가 높으면 재료가 존재한다고 판단합니다.
         - 재료가 더 제거되지 않더라도 절삭 스윕이 지나간 셀은 trace_intensity에 누적합니다.
+
+        [성능 개선]
+        Python 이중 루프를 numpy 벡터화 연산으로 교체하여 재생 중 지연을 제거합니다.
 
         Args:
             start: 이동 시작점 [X, Y, Z]
@@ -129,9 +144,9 @@ class StockModel:
         radius = tool.radius
         coverage_radius = radius + self.resolution * 0.5
 
-        dx = end[0] - start[0]
-        dy = end[1] - start[1]
-        dz = end[2] - start[2]
+        dx = float(end[0] - start[0])
+        dy = float(end[1] - start[1])
+        dz = float(end[2] - start[2])
         dist_xy = float(np.hypot(dx, dy))
 
         margin = coverage_radius + self.resolution
@@ -143,35 +158,70 @@ class StockModel:
         ix_min, iy_min = self._world_to_grid(x_min, y_min)
         ix_max, iy_max = self._world_to_grid(x_max, y_max)
 
+        if ix_min > ix_max or iy_min > iy_max:
+            return
+
         load_pct = float(segment_metrics.get("spindle_load_pct", 0.0)) if segment_metrics else 0.0
         chatter_score = float(segment_metrics.get("chatter_risk_score", 0.0)) if segment_metrics else 0.0
 
-        for ix in range(ix_min, ix_max + 1):
-            for iy in range(iy_min, iy_max + 1):
-                cx, cy = self._grid_to_world(ix, iy)
-                tool_z = self._get_tool_z_at(cx, cy, start, end, dist_xy, dz)
-                if tool_z is None:
-                    continue
+        # ── numpy 벡터화: Python 이중 루프 제거 ──────────────────────────
+        # 서브그리드 셀 중심 좌표 행렬 계산
+        ix_arr = np.arange(ix_min, ix_max + 1, dtype=float)
+        iy_arr = np.arange(iy_min, iy_max + 1, dtype=float)
+        # CX, CY: shape (nx_sub, ny_sub) — 각 격자 셀의 월드 좌표
+        CX = self.min_corner[0] + (ix_arr[:, np.newaxis] + 0.5) * self.resolution
+        CY = self.min_corner[1] + (iy_arr[np.newaxis, :] + 0.5) * self.resolution
 
-                dist_to_path = self._distance_to_segment_2d(cx, cy, start, end, dist_xy)
-                if dist_to_path > coverage_radius:
-                    continue
+        nx_sub = len(ix_arr)
+        ny_sub = len(iy_arr)
 
-                # 공구가 지나간 흔적은 절삭량과 무관하게 누적합니다.
-                self.pass_count_grid[ix, iy] += 1
-                self.trace_intensity_grid[ix, iy] = min(
-                    1.0,
-                    self.trace_intensity_grid[ix, iy] + 0.18
-                )
-                self.load_map[ix, iy] = max(self.load_map[ix, iy], load_pct)
-                self.chatter_map[ix, iy] = max(self.chatter_map[ix, iy], chatter_score * 100.0)
+        if dist_xy >= 1e-6:
+            # 각 셀에서 선분까지의 매개변수 t와 투영 거리 계산
+            # CX: (nx_sub, 1), CY: (1, ny_sub) → 브로드캐스트 → (nx_sub, ny_sub)
+            t_param = ((CX - start[0]) * dx + (CY - start[1]) * dy) / (dist_xy ** 2)
+            t_param = np.clip(t_param, 0.0, 1.0)
+            TOOL_Z = start[2] + t_param * dz          # (nx_sub, ny_sub)
+            PROJ_X = start[0] + t_param * dx
+            PROJ_Y = start[1] + t_param * dy
+            DIST = np.hypot(CX - PROJ_X, CY - PROJ_Y)
+        else:
+            # 점/수직 이동: 거리는 점까지의 직선 거리
+            # TOOL_Z를 (nx_sub, ny_sub) 크기로 명시적으로 생성
+            TOOL_Z = np.full((nx_sub, ny_sub), min(float(start[2]), float(end[2])))
+            DIST = np.hypot(CX - start[0], CY - start[1])  # 브로드캐스트 → (nx_sub, ny_sub)
 
-                if tool_z < self.grid[ix, iy]:
-                    self.grid[ix, iy] = tool_z
-                    self.removed_depth_grid[ix, iy] = max(
-                        self.removed_depth_grid[ix, iy],
-                        self.initial_top_z - tool_z
-                    )
+        # 공구 반경 내 셀 마스크
+        in_range = DIST <= coverage_radius
+        if not np.any(in_range):
+            return
+
+        # ── 서브그리드 슬라이스 뷰(view) — in-place 수정으로 원본 배열 갱신 ──
+        sg_grid    = self.grid[ix_min:ix_max + 1, iy_min:iy_max + 1]
+        sg_removed = self.removed_depth_grid[ix_min:ix_max + 1, iy_min:iy_max + 1]
+        sg_trace   = self.trace_intensity_grid[ix_min:ix_max + 1, iy_min:iy_max + 1]
+        sg_pass    = self.pass_count_grid[ix_min:ix_max + 1, iy_min:iy_max + 1]
+        sg_load    = self.load_map[ix_min:ix_max + 1, iy_min:iy_max + 1]
+        sg_chatter = self.chatter_map[ix_min:ix_max + 1, iy_min:iy_max + 1]
+
+        # 공구가 지나간 흔적은 절삭량과 무관하게 누적합니다.
+        sg_pass[in_range] += 1
+        sg_trace[in_range] = np.minimum(1.0, sg_trace[in_range] + 0.18)
+        if load_pct > 0.0:
+            sg_load[in_range] = np.maximum(sg_load[in_range], load_pct)
+        if chatter_score > 0.0:
+            sg_chatter[in_range] = np.maximum(sg_chatter[in_range], chatter_score * 100.0)
+
+        # 재료 제거: 공구 Z보다 소재 높이가 높은 셀만 낮춥니다.
+        removal_mask = in_range & (TOOL_Z < sg_grid)
+        if np.any(removal_mask):
+            sg_grid[removal_mask] = TOOL_Z[removal_mask]
+            sg_removed[removal_mask] = np.maximum(
+                sg_removed[removal_mask],
+                self.initial_top_z - TOOL_Z[removal_mask],
+            )
+
+        # 변경이 있었으므로 RGBA 캐시 무효화
+        self._mark_rgba_dirty()
 
     def estimate_segment_engagement(self, start: np.ndarray, end: np.ndarray,
                                     tool: Tool, sample_count: int = 7) -> dict:
@@ -360,26 +410,44 @@ class StockModel:
 
         실제 제거 형상은 유지하고, 화면에 보이는 흔적만 살짝 넓혀서
         공구가 지나간 자리가 더 선명하게 보이도록 합니다.
+
+        [성능 개선]
+        반경 1 셀의 경우 numpy 슬라이싱을 사용하여 np.roll 호출 36번(임시 배열 생성)을
+        8번의 in-place 최대값 연산으로 대체합니다.
         """
         radius_cells = max(0, int(radius_cells))
         if radius_cells == 0 or field.size == 0:
             return field.copy()
 
+        if radius_cells == 1:
+            # 빠른 경로: 8방향 이웃의 최대값을 numpy 슬라이싱으로 계산
+            # (np.roll 없이 임시 배열 0개로 처리)
+            result = field.copy()
+            result[1:, :]    = np.maximum(result[1:, :],    field[:-1, :])    # 위 → 아래
+            result[:-1, :]   = np.maximum(result[:-1, :],   field[1:, :])     # 아래 → 위
+            result[:, 1:]    = np.maximum(result[:, 1:],    field[:, :-1])    # 왼 → 오른
+            result[:, :-1]   = np.maximum(result[:, :-1],   field[:, 1:])     # 오른 → 왼
+            result[1:, 1:]   = np.maximum(result[1:, 1:],   field[:-1, :-1])  # 대각 ↙
+            result[1:, :-1]  = np.maximum(result[1:, :-1],  field[:-1, 1:])   # 대각 ↘
+            result[:-1, 1:]  = np.maximum(result[:-1, 1:],  field[1:, :-1])   # 대각 ↖
+            result[:-1, :-1] = np.maximum(result[:-1, :-1], field[1:, 1:])    # 대각 ↗
+            return result
+
+        # 반경 > 1 셀: 기존 np.roll 방식 유지
         expanded = field.copy()
         for dx in range(-radius_cells, radius_cells + 1):
             for dy in range(-radius_cells, radius_cells + 1):
+                if dx == 0 and dy == 0:
+                    continue
                 shifted = np.roll(field, shift=(dx, dy), axis=(0, 1))
-
                 if dx > 0:
                     shifted[:dx, :] = 0.0
                 elif dx < 0:
                     shifted[dx:, :] = 0.0
-
                 if dy > 0:
                     shifted[:, :dy] = 0.0
                 elif dy < 0:
                     shifted[:, dy:] = 0.0
-
                 expanded = np.maximum(expanded, shifted)
         return expanded
 
@@ -387,11 +455,17 @@ class StockModel:
         """
         뷰어 오버레이용 RGBA 이미지를 생성합니다.
 
+        재료 제거가 없으면 캐시된 이미지를 반환합니다(재생 성능 개선).
+
         mode:
           - footprint: 제거 깊이/가공 흔적 기반
           - load: 최대 스핀들 부하 기반
           - chatter: 최대 채터 위험도 기반
         """
+        # 변경이 없으면 캐시 반환
+        if not self._rgba_dirty and mode in self._rgba_cache:
+            return self._rgba_cache[mode]
+
         total_depth = max(1.0, self.initial_top_z - float(self.min_corner[2]))
         display_radius = 1 if self.resolution <= 3.0 else 2
 
@@ -453,11 +527,17 @@ class StockModel:
         rgba[mask, 2] = blue[mask]
         rgba[mask, 3] = alpha[mask]
 
+        # 결과를 캐시에 저장
+        self._rgba_cache[mode] = rgba
+        self._rgba_dirty = False
         return rgba
 
     def to_mesh_data(self, max_vertices: int = 30000) -> Tuple[np.ndarray, np.ndarray]:
         """
         Z-맵을 3D 메시 데이터로 변환합니다.
+
+        [성능 개선]
+        Python 이중 루프를 numpy 벡터화 연산으로 교체하였습니다.
         """
         if self._nx <= 0 or self._ny <= 0:
             return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
@@ -479,29 +559,38 @@ class StockModel:
         sample_nx = len(x_indices)
         sample_ny = len(y_indices)
 
-        vertices = []
-        faces = []
-
-        for sx, ix in enumerate(x_indices):
-            for sy, iy in enumerate(y_indices):
-                x, y = self._grid_to_world(int(ix), int(iy))
-                z = float(sample_grid[sx, sy])
-                vertices.append([x, y, z])
-
-        for sx in range(sample_nx - 1):
-            for sy in range(sample_ny - 1):
-                v00 = sx * sample_ny + sy
-                v01 = sx * sample_ny + (sy + 1)
-                v10 = (sx + 1) * sample_ny + sy
-                v11 = (sx + 1) * sample_ny + (sy + 1)
-
-                faces.append([v00, v10, v11])
-                faces.append([v00, v11, v01])
-
-        if not vertices or not faces:
+        if sample_nx < 2 or sample_ny < 2:
             return np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
 
-        return np.array(vertices, dtype=float), np.array(faces, dtype=int)
+        # ── 벡터화: 정점 배열 생성 ─────────────────────────────────────────
+        # 각 샘플 인덱스에 대응하는 월드 좌표 1D 배열
+        X_1d = self.min_corner[0] + (x_indices + 0.5) * self.resolution
+        Y_1d = self.min_corner[1] + (y_indices + 0.5) * self.resolution
+        # meshgrid로 (sample_nx, sample_ny) 행렬 생성
+        X, Y = np.meshgrid(X_1d, Y_1d, indexing='ij')
+        # flatten to (n_vertices, 3)
+        vertices = np.stack([X.ravel(), Y.ravel(), sample_grid.ravel()], axis=-1)
+
+        # ── 벡터화: 면(삼각형) 인덱스 배열 생성 ──────────────────────────
+        # 각 (i, j) 쌍에서 두 개의 삼각형 생성
+        R, C = np.meshgrid(
+            np.arange(sample_nx - 1, dtype=np.int32),
+            np.arange(sample_ny - 1, dtype=np.int32),
+            indexing='ij',
+        )
+        v00 = (R * sample_ny + C).ravel()
+        v01 = (R * sample_ny + (C + 1)).ravel()
+        v10 = ((R + 1) * sample_ny + C).ravel()
+        v11 = ((R + 1) * sample_ny + (C + 1)).ravel()
+
+        # 삼각형 1: [v00, v10, v11], 삼각형 2: [v00, v11, v01]
+        faces = np.stack([
+            np.concatenate([v00, v00]),
+            np.concatenate([v10, v11]),
+            np.concatenate([v11, v01]),
+        ], axis=-1)
+
+        return vertices, faces
 
     def get_stock_bounds(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -522,6 +611,7 @@ class StockModel:
         self.pass_count_grid.fill(0)
         self.load_map.fill(0.0)
         self.chatter_map.fill(0.0)
+        self._mark_rgba_dirty()
         logger.debug("소재 모델 초기화됨")
 
     @property

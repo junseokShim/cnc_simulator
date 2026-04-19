@@ -327,25 +327,54 @@ class MachiningAnalysisPanel(QWidget):
         analysis = self._analysis
         params = analysis.model_params
 
+        # 가공 상태 분포 계산
+        results = analysis.results
+        total = len(results)
+        cutting_n = sum(1 for r in results if r.is_cutting)
+        air_n = sum(
+            1 for r in results
+            if not r.is_cutting and getattr(r, "machining_state", "") != "RAPID"
+        )
+        rapid_n = total - cutting_n - air_n
+
+        # 스핀들 부하 분해 평균 (절삭 세그먼트 기준)
+        cutting_results = [r for r in results if r.is_cutting]
+        if cutting_results:
+            avg_baseline = sum(
+                getattr(r, "baseline_load_pct", 0.0) for r in cutting_results
+            ) / len(cutting_results)
+            avg_axis = sum(
+                getattr(r, "axis_motion_load_pct", 0.0) for r in cutting_results
+            ) / len(cutting_results)
+            avg_cutting_comp = sum(
+                getattr(r, "cutting_load_pct", 0.0) for r in cutting_results
+            ) / len(cutting_results)
+        else:
+            avg_baseline = avg_axis = avg_cutting_comp = 0.0
+
+        machine_name = getattr(analysis, "machine_profile_name", "Unknown")
+
         summary = (
-            f"최대/평균 부하: {analysis.max_spindle_load_pct:.1f}% / "
+            f"[기계] {machine_name}\n"
+            f"[상태 분포] 절삭: {cutting_n}블록 | 공중이송: {air_n}블록 | 급속: {rapid_n}블록\n"
+            f"[스핀들 부하] 최대/평균: {analysis.max_spindle_load_pct:.1f}% / "
             f"{analysis.avg_spindle_load_pct:.1f}%\n"
-            f"최대/평균 채터 위험: {analysis.max_chatter_risk * 100:.1f}% / "
-            f"{analysis.avg_chatter_risk * 100:.1f}%\n"
-            f"평균 AE/AP: {analysis.avg_radial_depth_ae:.2f} / {analysis.avg_axial_depth_ap:.2f} mm  "
-            f"최대 AE/AP: {analysis.max_radial_depth_ae:.2f} / {analysis.max_axial_depth_ap:.2f} mm\n"
-            f"축 진동 최대 X/Y/Z: {analysis.max_vibration_x_um:.2f} / "
-            f"{analysis.max_vibration_y_um:.2f} / {analysis.max_vibration_z_um:.2f} um  "
-            f"합성 최대: {analysis.max_resultant_vibration_um:.2f} um\n"
-            f"고위험 블록: {analysis.high_risk_segment_count}개 ({analysis.high_risk_pct:.1f}%)  "
-            f"공격 절삭: {analysis.aggressive_segment_count}개 ({analysis.aggressive_segment_pct:.1f}%)  "
-            f"최대 절삭력: {analysis.max_cutting_force:.0f} N\n"
-            f"모델 파라미터: 재료={params.get('material', '?')}  "
-            f"Kc1={params.get('Kc1', 0):.0f} N/mm^2  "
+            f"  └ 부하 분해(절삭 평균): 기저 {avg_baseline:.1f}% | "
+            f"이송 {avg_axis:.1f}% | 절삭 {avg_cutting_comp:.1f}%\n"
+            f"[채터 위험] 최대/평균: {analysis.max_chatter_risk * 100:.1f}% / "
+            f"{analysis.avg_chatter_risk * 100:.1f}%  "
+            f"고위험 블록: {analysis.high_risk_segment_count}개 ({analysis.high_risk_pct:.1f}%)\n"
+            f"[절삭 조건] AE 최대/평균: {analysis.max_radial_depth_ae:.2f} / "
+            f"{analysis.avg_radial_depth_ae:.2f} mm  "
+            f"AP 최대/평균: {analysis.max_axial_depth_ap:.2f} / "
+            f"{analysis.avg_axial_depth_ap:.2f} mm\n"
+            f"[진동] 합성 최대: {analysis.max_resultant_vibration_um:.2f} um  "
+            f"X/Y/Z 최대: {analysis.max_vibration_x_um:.2f}/"
+            f"{analysis.max_vibration_y_um:.2f}/{analysis.max_vibration_z_um:.2f} um\n"
+            f"[모델] 재료={params.get('material', '?')}  "
             f"정격출력={params.get('spindle_rated_power_w', 0) / 1000:.1f} kW  "
-            f"축강성 X/Y/Z={params.get('x_axis_stiffness_n_per_um', 0):.0f}/"
-            f"{params.get('y_axis_stiffness_n_per_um', 0):.0f}/"
-            f"{params.get('z_axis_stiffness_n_per_um', 0):.0f} N/um"
+            f"강성={params.get('k_n_per_um', 0):.0f} N/μm  "
+            f"fn={params.get('f_natural_hz', 0):.0f} Hz"
         )
         self._summary_label.setText(summary)
 

@@ -49,70 +49,47 @@ playback:
   min_speed: 0.1
   timer_interval: 100
 
-# AE/AP-aware 가공 해석 모델 설정
-# [중요] 아래 값들은 산업용 실측값이 아니라 공학적 근사 모델용 계수입니다.
-# 실제 설비 특성에 맞춰 보정하면서 사용하는 것을 권장합니다.
+# ============================================================
+# 가공 해석 모델 설정 (Altintas 기계론적 절삭력 + 안정성 로브선도 채터 모델)
+# ============================================================
+# [참고] app/models/cutting_force_model.py  → 스핀들 부하 모델 (Altintas 2000)
+#        app/models/chatter_model.py        → 채터 모델 (Altintas & Budak 1995)
+#        docs/model_replacement_guide.md    → ML 모델 교체 가이드
+# [중요] 아래 값들은 공학적 근사 모델용 파라미터입니다.
+# 실제 설비의 FRF 측정값이 있다면 k_n_per_um, zeta, f_natural_hz를 교체하세요.
 machining:
-  # 재료: aluminum | steel_mild | steel_hard | stainless | titanium | cast_iron | default
+  # ---- 기계 프로파일 ----
+  # 사용할 기계의 프로파일 ID를 지정합니다.
+  # configs/machines/{id}.yaml 파일에서 해당 기계의 특성이 로드됩니다.
+  # 새 기계 추가: configs/machines/ 에 YAML 파일 추가 후 model_id 변경
+  machine_profile_id: t4000           # DN Solutions T4000 (기본값)
+
+  # ---- 재료 ----
+  # aluminum | steel_mild | steel_hard | stainless | titanium | cast_iron | default
+  # cutting_force_model.py의 MATERIAL_FORCE_COEFFICIENTS에서 Ktc/Krc 등이 자동 선택됩니다.
   material: aluminum
 
-  # 기계/공구 계수
-  machine_stiffness: 1.0
-  tool_overhang_factor: 1.0
+  # ---- fallback 절삭 조건 (NC에서 추출 불가 시, stock 모델 없을 때 사용) ----
+  # [주의] stock_model이 있으면 실제 소재 접촉 기반으로 자동 보정됩니다.
+  # stock_model 없을 때만 아래 fallback 값이 사용됩니다.
+  default_ae_ratio: 0.5               # 반경방향 맞물림 기본 비율 (ae/D)
+  default_ap_mm: 2.0                  # 축방향 절입 기본값 (mm)
+  default_flute_count: 4              # 날 수 기본값
+  milling_mode: up_milling            # up_milling | down_milling | slotting
 
-  # 스핀들 정격
-  spindle_rated_power_w: 7500.0
-  spindle_efficiency: 0.82
+  # ---- MRR 정규화 기준 (스핀들 공격성 지수) ----
+  mrr_reference_mm3min: 50000.0       # 100% 공격성에 해당하는 MRR 기준값 (mm³/min)
 
-  # fallback 절삭 조건
-  default_ae_ratio: 0.5
-  default_ap_mm: 2.0
-  default_flute_count: 4
+  # ---- 경보 임계값 ----
+  high_load_threshold_pct: 80.0       # 스핀들 부하 경보 기준 (%)
+  aggressive_ap_ratio: 0.50           # 공격적 절입 깊이 비율 (ap/D)
+  aggressive_ae_ratio: 0.65           # 공격적 맞물림 비율 (ae/D)
+  unstable_chatter_threshold: 0.65    # 채터 위험 경보 기준 (0~1)
+  xy_vibration_warning_um: 12.0       # XY 진동 경보 (μm)
+  z_vibration_warning_um: 9.0         # Z 진동 경보 (μm)
+  resultant_vibration_warning_um: 16.0 # 합성 진동 경보 (μm)
 
-  # 절삭 해석 기준
-  min_chip_thickness_mm: 0.01
-  reference_chipload_mm: 0.06
-  reference_mrr_mm3_min: 16000.0
-  engagement_sample_count: 7
-
-  # 진입 보정 계수
-  entry_force_multiplier: 1.15
-  plunge_force_multiplier: 1.40
-  ramp_force_multiplier: 1.20
-
-  # 축력 분해 계수
-  radial_force_ratio_base: 0.42
-  radial_force_ratio_gain: 0.22
-  axial_force_ratio_base: 0.18
-  axial_force_ratio_gain: 0.30
-
-  # 축 강성 (N/um)
-  # 기계가 더 강성일수록 같은 힘에서도 진동값이 작게 계산됩니다.
-  x_axis_stiffness_n_per_um: 60.0
-  y_axis_stiffness_n_per_um: 58.0
-  z_axis_stiffness_n_per_um: 85.0
-
-  # 동적 증폭 계수
-  dynamic_vibration_gain: 0.85
-  chatter_sensitivity: 1.0
-  load_smoothing_alpha: 0.3
-
-  # 채터 위험도 가중치
-  w_engagement: 0.25
-  w_speed: 0.10
-  w_direction_change: 0.14
-  w_plunge: 0.16
-  w_force: 0.18
-  w_load_change: 0.10
-  w_chipload: 0.07
-
-  # 공격 절삭 / 경보 기준
-  high_load_threshold_pct: 80.0
-  aggressive_ap_ratio: 0.50
-  aggressive_ae_ratio: 0.65
-  unstable_chatter_threshold: 0.65
-
-  # 축별 진동 경보 기준 (um)
-  xy_vibration_warning_um: 12.0
-  z_vibration_warning_um: 9.0
-  resultant_vibration_warning_um: 16.0
+  # ---- 스톡 탐색 ----
+  engagement_sample_count: 7          # 세그먼트당 스톡 샘플 수
+  # [참고] 기계별 동특성(강성, 감쇠비, 고유주파수 등)은
+  # configs/machines/t4000.yaml 에서 직접 설정합니다.

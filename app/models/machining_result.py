@@ -79,6 +79,16 @@ class SegmentMachiningResult:
     is_ramp: bool
     is_cutting: bool
 
+    # ---- 가공 상태 및 접촉 정보 (공중이송/절삭 분리의 핵심) ----
+    machining_state: str = "UNKNOWN"        # RAPID/AIR_FEED/PLUNGE/CUTTING/EXIT
+    contact_ratio: float = 0.0              # 소재 접촉 비율 (0=비접촉, 1=완전 접촉)
+
+    # ---- 스핀들 부하 분해 성분 ----
+    # total_load = baseline + axis_motion + cutting
+    baseline_load_pct: float = 0.0          # 스핀들 무부하 기저 부하 (%)
+    axis_motion_load_pct: float = 0.0       # 축 이송 소비 부하 (%)
+    cutting_load_pct: float = 0.0           # 실제 절삭 기여 부하 (%)
+
     # ---- 상세 분석 ----
     risk_factors: dict = field(default_factory=dict)
     warning_messages: List[str] = field(default_factory=list)
@@ -148,6 +158,10 @@ class MachiningAnalysis:
 
     # ---- 모델 파라미터 ----
     model_params: dict = field(default_factory=dict)
+
+    # ---- 사용된 기계 프로파일 정보 ----
+    machine_profile_name: str = "Unknown"
+    machine_profile_id: str = "unknown"
 
     def get_spindle_load_array(self) -> np.ndarray:
         """전체 세그먼트의 스핀들 부하 배열"""

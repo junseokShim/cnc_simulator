@@ -3,226 +3,402 @@
 > 연구/개발/교육 목적의 Python 기반 3축 CNC 시뮬레이션 및 NC 코드 검증 도구입니다.
 > 실제 산업용 채터 해석기나 상용 검증기의 완전한 대체는 아니며, 공학적 근사 모델을 사용합니다.
 
-## 개요
+**기본 기계**: DN Solutions T4000 (BT30, 12,000 RPM)
 
-이 프로젝트는 NC/G-code를 파싱하여 공구경로를 시각화하고,
-스톡(소재) 상태를 바탕으로 세그먼트별 AE/AP를 추정한 뒤
-다음 값을 수치적으로 계산합니다.
-
-- 스핀들 부하 추정
-- 절삭력 추정
-- 채터/불안정 위험도
-- X/Y/Z 축별 예상 진동
-- 누적 가공 footprint(가공 흔적) 맵
-
-이번 버전에서는 특히 다음 두 가지가 강화되었습니다.
-
-1. AE/AP-aware 가공 해석
-2. 지속적으로 남는 가공 흔적(footprint) 시각화
-
-추가로, 소재의 크기와 원점을 UI에서 직접 설정할 수 있습니다.
+---
 
 ## 주요 기능
 
 | 기능 | 설명 |
 |------|------|
 | NC 코드 파싱 | G0/G1/G2/G3/G4 및 기본 모달 상태 추적 |
-| 공구경로 시각화 | 3D 뷰 + 2D fallback 뷰에서 급속/절삭 경로 구분 |
+| 공구경로 시각화 | 3D 뷰 + 2D fallback에서 급속/절삭 경로 구분 |
 | 누적 가공 흔적 | 절삭 스윕이 지나간 영역을 footprint 형태로 계속 남김 |
-| AE/AP 기반 부하 해석 | 스톡 상태에서 맞물림을 다시 계산하여 부하와 위험도 추정 |
-| X/Y/Z 축 진동 정보 | 축력 분해 + 축강성 기반 예상 진동(um) 표시 |
-| 검증 규칙 | 급속 이동 소재 진입, 범위 초과, 공구 누락 등 검증 |
-| 리포트 생성 | 검증 결과와 가공 해석 요약을 텍스트 리포트로 저장 |
+| 기계론적 절삭력 모델 | Altintas (2000) 기반 접선/반경/축방향 절삭력 수치 계산 |
+| 스핀들 부하 추정 | 기저+이송+절삭 성분 분해 (공중이송≠절삭 부하) |
+| 채터 위험도 추정 | 비선형 점수화로 포화 방지, 의미 있는 위험도 분포 |
+| X/Y/Z 축 진동 | FRF 기반 동적 진동 진폭 추정 (μm) |
+| 기계 프로파일 | DN Solutions T4000 기본, YAML로 다른 기계 추가 가능 |
+| 검증 규칙 | 급속 이동 소재 진입, 범위 초과, 공구 누락 등 |
+| 리포트 생성 | 검증 결과 + 가공 해석 요약 텍스트/CSV 저장 |
 
-## AE/AP-aware 해석 모델
+---
 
-### 1. 스톡 기반 맞물림 추정
+## 비현실 모델 수정 기록
 
-세그먼트를 따라 여러 샘플 점을 잡고 현재 남아 있는 스톡과 공구 스윕을 교차시켜
-`AE(반경방향 맞물림)`과 `AP(축방향 절입)`를 추정합니다.
+### 이전 모델의 문제점
 
-- 같은 경로라도 이미 한 번 지나간 영역이면 AE가 작아질 수 있습니다.
-- 더 깊게 파고들수록 AP가 커집니다.
-- 따라서 AE/AP 변화가 실제로 부하와 채터 위험도에 반영됩니다.
+#### 문제 1: G1 공중이송에서 절삭급 스핀들 부하 발생
+**원인**: `seg.is_cutting_move`는 G0이 아니면 무조건 True였습니다.
+stock_model 접촉 검사에서 `engaged_samples == 0`이어도 `is_cutting=True`가 유지되었고,
+`ae = D × 0.5`(기본값)가 절삭력 모델에 그대로 사용되어 공중이송에도 절삭급 부하가 발생했습니다.
 
-### 2. 부하/절삭력 추정
+**수정**: `engaged_samples == 0`이면 `is_cutting = False`로 강제 전환합니다.
+`CuttingFeatures`에 `machining_state` 필드를 추가하여 RAPID/AIR_FEED/PLUNGE/CUTTING 상태를 명시적으로 관리합니다.
 
-모델은 다음 입력을 반영합니다.
+#### 문제 2: 채터 위험도가 거의 모든 블록에서 100%로 포화
+**원인**: 선형 점수 공식 `base_score = 1 - SM/SM_safe`에 가산 보정값(최대 +0.37)을 더하면
+일반 절삭 조건에서도 1.0+가 되어 하드 클리핑 후 항상 100%가 되었습니다.
 
-- 공구 직경
-- 회전수(RPM)
-- 이송속도(mm/min)
-- 날 수
-- AE / AP
-- 플런지 / 램프 여부
-- 방향 전환 각도
-- 공구 돌출 계수
-- 기계 강성 계수
-- 재료 계수
+예) 스틸 ap=2mm, ae=D/2: ap_lim≈1.2mm → SM=0.6 → base_score=0.76 → +보정 → >1.0 → 100%
 
-대표적인 내부 계산 흐름은 다음과 같습니다.
+**수정**: 비선형 시그모이드 유사 공식으로 교체합니다:
+```
+base_score = 1 / (1 + (SM / SM_ref)^power)   SM_ref=1.2, power=2.5
+```
+추가 보정도 가산→승산 방식으로 변경하여 포화를 원천 방지합니다.
 
-```text
-Vc = pi * D * n / 1000
-fz = F / (n * z)
-chip_thickness = f(fz, ae/D)
-cutting_force ~= Kc(hm) * ap * hm * z_eff * engagement_factor
-spindle_load ~= mix(power_based_load, mrr_based_load) * AE/AP bonus
+#### 문제 3: 기계 특성값 하드코딩
+**원인**: `spindle_rated_power_w = 7500.0` 같은 값이 하드코딩되어 있어
+특정 기계의 특성을 반영하지 못했습니다.
+
+**수정**: `MachineProfile` 객체와 YAML 파일로 기계 특성을 분리하고,
+DN Solutions T4000을 기본 프로파일로 사용합니다.
+
+---
+
+## 스핀들 부하 분해 구조
+
+스핀들 부하는 세 가지 물리적 성분의 합으로 계산됩니다:
+
+```
+total_load = baseline_component + axis_motion_component + cutting_component
 ```
 
-### 3. 채터/진동 위험도 추정
+| 성분 | 설명 | 비절삭 시 | 절삭 시 |
+|------|------|-----------|---------|
+| `baseline_load_pct` | 스핀들 무부하 회전 (베어링 마찰, 냉각팬 등) | ~7% | ~7% |
+| `axis_motion_load_pct` | 이송 축 구동 (이송속도 비례) | ~1-3% | ~1-3% |
+| `cutting_load_pct` | Altintas 절삭력 모델 (소재 접촉 시만 발생) | **0%** | 조건에 따라 |
 
-채터 위험도는 다음 요소를 복합적으로 합산합니다.
+**실제 결과 예시 (알루미늄, D=16mm, ap=2mm, ae=16mm, S=4500)**:
+- 급속이동 (G0): 0%
+- 공중이송 G1: ~8.4% (기저 7% + 이송 1%)
+- 실제 절삭: ~19% (기저 7% + 이송 1% + 절삭 11%)
 
-- AE/AP 기반 engagement 위험
-- 절삭속도 구간
-- 방향 전환
-- 플런지/램프 진입
-- 스핀들 부하
-- 블록 간 부하 변화
-- 칩로드
-- 공구 돌출
-- 기계 강성
+공중이송이 절삭보다 높은 부하를 보이는 현상이 완전히 해소되었습니다.
 
-### 4. X/Y/Z 축 진동 추정
+---
 
-절삭력을 공구 진행 방향 기준으로 X/Y/Z 축력으로 나눈 뒤,
-축강성(N/um)과 동적 증폭 계수를 반영해 예상 진동을 계산합니다.
+## 채터 위험도 점수화 방식 (비선형)
 
-- X/Y 축: stepover, 방향 전환, 측면 힘 영향이 큼
-- Z 축: AP, 플런지/램프 진입 영향이 큼
-
-UI에서는 현재 세그먼트의 다음 값을 바로 확인할 수 있습니다.
-
-- X축 예상 진동
-- Y축 예상 진동
-- Z축 예상 진동
-- 합성 진동
-
-## 가공 흔적(footprint) 시각화
-
-시뮬레이션은 현재 공구만 움직여 보여주는 방식이 아니라,
-이미 가공이 끝난 영역도 계속 남는 `누적 footprint` 오버레이를 사용합니다.
-
-사용자는 화면에서 다음을 구분할 수 있습니다.
-
-- 아직 untouched 상태인 소재
-- 이미 지나간 가공 영역
-- 현재 공구 위치
-- 공구경로
-- 급속 이동 vs 절삭 이동
-
-필요하면 색상 모드를 `스핀들 부하` 또는 `채터 위험도` 기준으로 바꿔
-footprint와 경로를 더 공학적으로 읽을 수 있습니다.
-
-## 소재 크기 / 원점 설정
-
-우측 제어 패널의 `소재 설정`에서 다음 항목을 조정할 수 있습니다.
-
-- 원점 기준
-  - 상면 중심
-  - 상면 최소 코너
-  - 바닥 중심
-  - 바닥 최소 코너
-  - 소재 중심
-- 원점 X/Y/Z
-- 소재 크기 X/Y/Z
-- Z-map 격자 해상도
-
-`소재 적용`을 누르면 다음이 즉시 다시 계산됩니다.
-
-1. 스톡 경계
-2. AE/AP 기반 해석
-3. 검증 결과
-4. 누적 footprint 시각화
-
-## 설치
-
-```bash
-pip install -r requirements.txt
+### 이전 (포화 문제)
+```python
+# 선형 + 가산 → 포화
+base_score = 1 - SM / 2.5
+score = (base_score + 0.15 + 0.12 + 0.10) * sensitivity  # → 1.0+ → clip → 100%
 ```
 
-개발 모드 설치:
+### 현재 (비선형, 포화 방지)
+```python
+# 비선형 시그모이드 유사 매핑
+base_score = 1 / (1 + (SM / SM_ref)^power)    # SM_ref=1.2, power=2.5
 
-```bash
-pip install -e .
+# 승산적 보정 (포화 방지)
+score = base_score * resonance_factor * plunge_factor * dir_factor * sensitivity
 ```
 
-## 실행
+SM별 위험도 분포:
 
-GUI 실행:
+| SM | 의미 | 위험도 |
+|----|------|--------|
+| 0.5 | 심각하게 불안정 | ~84% |
+| 1.0 | 불안정 경계 | ~60% |
+| 1.2 | 50% 기준점 | 50% |
+| 2.0 | 안정 | ~28% |
+| 4.0 | 매우 안정 | ~10% |
+| 8.0 | 극도로 안정 | ~3% |
 
-```bash
-python -m app.main
+---
+
+## DN Solutions T4000 기계 프로파일
+
+T4000은 이 시뮬레이터의 기본 기계 프로파일입니다.
+
+### T4000 주요 사양
+
+| 항목 | 값 |
+|------|-----|
+| 스핀들 최대 RPM | 12,000 (옵션: 18,000) |
+| 스핀들 정격 출력 | 7.5 kW (연속) / 11 kW (순간) |
+| 스핀들 테이퍼 | BT30 (ISO #30) |
+| X/Y/Z 이동량 | 520 / 400 / 350 mm |
+| 급속 이송 | 56 m/min |
+| 공구 끝단 강성 | 22 N/μm (BT30 홀더 기준) |
+| 고유주파수 | 900 Hz |
+| 감쇠비 | 0.03 |
+
+### 기계 프로파일 아키텍처
+
+```
+configs/machines/
+└── t4000.yaml          ← T4000 특성값 (스핀들, 이동량, 동특성)
+
+app/machines/
+├── __init__.py
+└── machine_profile.py  ← MachineProfile 데이터클래스 + MachineProfileRegistry
 ```
 
-NC 파일 직접 로드:
+T4000 특성값은 `configs/machines/t4000.yaml`에 정의되어 있으며,
+모델 코드에 하드코딩되지 않습니다.
 
-```bash
-python -m app.main --file examples/simple_pocket.nc
-```
+---
 
-프로젝트 파일 로드:
+## 다른 기계 프로파일 추가 방법
 
-```bash
-python -m app.main --project examples/example_project.yaml
-```
-
-헤드리스 검증:
-
-```bash
-python -m app.main --headless --file examples/simple_pocket.nc
-```
-
-## 주요 설정 파일
-
-`configs/simulation_options.yaml`
-
-중요 키:
-
-- `stock.origin_mode`
-- `stock.origin`
-- `stock.size`
-- `stock.resolution`
-- `machining.machine_stiffness`
-- `machining.tool_overhang_factor`
-- `machining.x_axis_stiffness_n_per_um`
-- `machining.y_axis_stiffness_n_per_um`
-- `machining.z_axis_stiffness_n_per_um`
-- `machining.xy_vibration_warning_um`
-- `machining.z_vibration_warning_um`
-- `machining.resultant_vibration_warning_um`
-
-## 예제 프로젝트
-
-`examples/example_project.yaml`은 다음 형식을 보여줍니다.
+1. `configs/machines/{machine_id}.yaml` 파일을 생성합니다:
 
 ```yaml
-stock:
-  origin_mode: top_center
-  origin: [0.0, 0.0, 0.0]
-  size: [120.0, 120.0, 30.0]
-  resolution: 2.0
+machine_profile:
+  name: "My Machine XYZ"
+  manufacturer: "Brand"
+  model_id: "xyz_model"
+  spindle_max_rpm: 15000.0
+  spindle_rated_power_w: 11000.0
+  spindle_taper: "BT40"
+  x_travel_mm: 800.0
+  y_travel_mm: 500.0
+  z_travel_mm: 450.0
+  rapid_traverse_mm_min: 48000.0
+  machine_stiffness_factor: 1.1
+  damping_ratio: 0.03
+  tool_tip_stiffness_n_per_um: 30.0
+  natural_frequency_hz: 750.0
+  chatter_sensitivity: 1.0
+  baseline_power_ratio: 0.07
+  axis_motion_power_ratio: 0.04
+  machine_efficiency: 0.85
+  tool_holder_rigidity: 1.0
+  stability_lobe_correction: 1.0
+```
+
+2. `configs/simulation_options.yaml`에서 `machine_profile_id`를 변경합니다:
+
+```yaml
+machining:
+  machine_profile_id: xyz_model    # 새 기계로 전환
+```
+
+3. 시뮬레이션 파이프라인 코드 수정은 불필요합니다.
+
+---
+
+## 수학적 모델링 개요
+
+```
+NC 세그먼트
+    │
+    ▼
+CuttingConditionExtractor  →  CuttingFeatures (초기 추정)
+    │
+    ▼  (stock_model 있으면 실제 소재 접촉 검사)
+[Stock Engagement Gate]    →  is_cutting 최종 결정, machining_state 확정
+    │
+    ├──▶ MechanisticCuttingForceModel  →  SpindleLoadPrediction
+    │    (Altintas 2000)                   - Ft, Fr, Fa, Fx, Fy, Fz
+    │                                      - 토크, 총전력
+    │                                      - baseline/axis/cutting 부하 분해
+    │
+    └──▶ StabilityLobeChatterModel     →  ChatterRiskPrediction
+         (Altintas & Budak 1995)           - SM (안정성 마진)
+                                           - 채터 위험도 0~1 (비선형)
+                                           - 진동 진폭 X/Y/Z μm
+```
+
+---
+
+## 스핀들 부하 추정 방식
+
+### 기반 이론
+
+Altintas, Y. (2000). *Manufacturing Automation*. Cambridge University Press. Chapter 2.
+
+**1회전 평균 접선 절삭력**:
+
+```
+Ft = z·ap/(2π) · [Ktc·fz·(cos(φ_st)−cos(φ_ex)) + Kte·(φ_ex−φ_st)]
+```
+
+**X/Y 방향 합력** (방향 계수 이용):
+
+```
+Fx = z·ap·fz/(4π) · (Ktc·a_xx + Krc·a_xy) + 날끝 기여
+Fy = z·ap·fz/(4π) · (Ktc·a_yx + Krc·a_yy) + 날끝 기여
+```
+
+**토크 및 절삭 전력**:
+
+```
+T = Ft · D/2      [N·mm → N·m]
+P_cutting = Ft · Vc / 60  [W]
+```
+
+**스핀들 총 전력 및 부하**:
+
+```
+P_total = P_baseline + P_axis + P_cutting / η
+load%   = P_total / P_rated · 100
+```
+
+### 재료별 절삭력 계수 (기본값)
+
+| 재료 | Ktc (N/mm²) | Krc (N/mm²) | 비고 |
+|------|------------|------------|------|
+| 알루미늄 | 700 | 210 | Al 6061/7075 기준 |
+| 저탄소강 | 1800 | 630 | S45C 기준 |
+| 경화강 | 2500 | 1000 | HRC 45+ |
+| 스테인리스 | 2200 | 770 | SUS304 |
+| 티타늄 | 2000 | 800 | Ti-6Al-4V |
+| 주철 | 1100 | 330 | GC250 |
+
+---
+
+## 진동/채터 위험도 추정 방식
+
+### 기반 이론
+
+Altintas, Y., & Budak, E. (1995). Analytical Prediction of Stability Lobes in Milling. *CIRP Annals*, 44(1), 357–362.
+
+### 핵심 공식
+
+**단일 자유도 FRF**:
+
+```
+Re[G]_min = −1/(2kζ√(1−ζ²))
+```
+
+**임계 축방향 절입 깊이**:
+
+```
+ap_lim = −2π / (N·Ktc·a_d·Λ_R) · stability_lobe_correction
+```
+
+**안정성 마진**:
+
+```
+SM = ap_lim / ap_actual
+```
+
+**채터 위험도 (비선형)**:
+
+```
+base_score = 1 / (1 + (SM / 1.2)^2.5)
+score = base_score × 공진보정 × 플런지보정 × 방향보정 × 민감도
+```
+
+---
+
+## 한계점
+
+1. **FRF 기반 한계**: 실제 공구-스핀들 시스템 FRF를 측정하지 않아 채터 경계 오차 가능
+2. **공정 감쇠 미구현**: 저속 가공에서 나타나는 process damping 효과 미반영
+3. **MDOF 미구현**: 다중 자유도 안정성 해석 미구현
+4. **재료 계수**: 문헌 기준 평균값, 실제 재료에 따른 편차 존재
+5. **열적 효과**: 절삭열에 의한 강성 변화 미반영
+
+---
+
+## 데이터 기반 모델로 교체하는 방법
+
+다음 파일들을 수정하면 ML 모델을 주입할 수 있습니다:
+
+### 교체 대상 파일
+
+| 파일 | 교체할 내용 |
+|------|------------|
+| `app/models/cutting_force_model.py` | `SpindleLoadPredictor` 구현체 교체 |
+| `app/models/chatter_model.py` | `ChatterRiskPredictor` 구현체 교체 |
+| `app/models/model_interfaces.py` | 인터페이스 정의 (변경 최소화 권장) |
+| `app/simulation/machining_model.py` | predictor 주입 위치 |
+
+### 교체 방법
+
+```python
+# app/simulation/machining_model.py
+model = MachiningModel(
+    load_predictor=ML스핀들부하모델(),     # ← 교체 지점 A
+    chatter_predictor=ML채터모델(),        # ← 교체 지점 B
+    machine_profile=MachineProfileRegistry.get("t4000"),
+)
+```
+
+인터페이스(`app/models/model_interfaces.py`)를 구현하면 UI, 보고서, 검증 모듈은 변경 없이 동작합니다.
+
+> 상세 가이드: `docs/model_replacement_guide.md`
+
+---
+
+## 설치 및 실행
+
+```bash
+pip install PySide6 PyOpenGL pyqtgraph pyyaml numpy scipy trimesh
+
+python -m app.main
 ```
 
 ## 테스트
 
 ```bash
-pytest -q tests
+python -m pytest tests/ -v
 ```
 
-현재 테스트는 다음을 포함합니다.
+---
 
-- AE 변화가 부하/위험도/진동에 반영되는지
-- AP 변화가 부하/위험도/Z축 진동에 반영되는지
-- 이송 방향에 따라 주 진동축이 달라지는지
-- 플런지에서 Z축 진동이 커지는지
-- footprint 맵이 누적되고 reset 시 초기화되는지
-- 소재 원점/크기 설정이 올바르게 bounds로 변환되는지
+## 프로젝트 구조
 
-## 한계
+```
+app/
+├── main.py                         # 진입점
+├── machines/
+│   ├── __init__.py
+│   └── machine_profile.py          # MachineProfile + MachineProfileRegistry
+├── models/
+│   ├── model_interfaces.py         # 추상 인터페이스 (ML 교체 지점)
+│   ├── cutting_conditions.py       # 절삭 조건 추출, 절입각, 가공상태 상수
+│   ├── cutting_force_model.py      # Altintas 기계론적 절삭력 + 부하 분해
+│   ├── chatter_model.py            # 안정성 로브선도 채터 (비선형 점수화)
+│   └── machining_result.py         # 결과 데이터 구조 (상태/분해 필드 포함)
+├── simulation/
+│   └── machining_model.py          # 파이프라인 오케스트레이터 + stock gate
+├── ui/                             # PySide6 UI 컴포넌트
+├── services/                       # 파싱, 리포트 서비스
+└── geometry/                       # 스톡(소재) 모델
+configs/
+├── simulation_options.yaml         # 재료/경보 파라미터, machine_profile_id
+└── machines/
+    └── t4000.yaml                  # DN Solutions T4000 기계 프로파일 (기본)
+docs/
+└── model_replacement_guide.md      # ML 모델 교체 가이드
+```
 
-- 채터 안정성 로브선도(SLD) 완전 해석은 아직 구현되지 않았습니다.
-- 스톡 모델은 Z-map 기반이므로 해상도에 따른 근사 오차가 있습니다.
-- 5축 가공, 좌표계 오프셋(G54~G59), 서브프로그램(M98/M99)은 아직 제한적이거나 미구현입니다.
-- 실제 가공 적용 전에는 반드시 현장 조건과 실측 데이터를 기준으로 재검토해야 합니다.
+---
+
+## 참고한 논문 / 문헌
+
+### [1] Altintas, Y. (2000). Manufacturing Automation
+Cambridge University Press.
+
+**기여**: 기계론적 밀링 절삭력 모델의 핵심 이론.
+- 1회전 평균 절삭력 공식 (Eq. 2.15–2.26) → `cutting_force_model.py`
+- 절입각 φ_entry, φ_exit 정의 (Eq. 2.5–2.6) → `cutting_conditions.py`
+- 방향 계수 a_xx, a_xy, a_yx, a_yy (Eq. 2.23–2.26) → `cutting_conditions.py`
+- 스핀들 전력 계산 (Eq. 2.17) → `cutting_force_model.py`
+- SDOF FRF 모델 (Ch. 4) → `chatter_model.py`
+
+### [2] Altintas, Y., & Budak, E. (1995). Analytical Prediction of Stability Lobes in Milling
+*CIRP Annals*, 44(1), 357–362.
+
+**기여**: 안정성 로브선도 이론의 핵심 공식.
+- 임계 절입 깊이 ap_lim = −2π / (N·Kt·a_d·Λ_R) → `chatter_model.py`
+- 방향 계수를 이용한 안정성 행렬 → `cutting_conditions.py`
+
+### [3] Schmitz, T.L., & Smith, K.S. (2009). Machining Dynamics
+Springer US.
+
+**기여**: 채터 메커니즘 및 주파수 분석.
+- 날 통과 주파수 공식 f_tp = n·z/60 (Eq. 3.1) → `chatter_model.py`
+
+### [4] Kao, Y.-C. et al. (2015). A prediction method of cutting force coefficients
+*International Journal of Advanced Manufacturing Technology*, 77, 1–11.
+
+**기여**: 재료별 절삭력 계수 참조 데이터베이스 → `cutting_force_model.py`

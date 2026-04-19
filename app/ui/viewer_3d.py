@@ -288,6 +288,12 @@ if _PYQTGRAPH_GL_AVAILABLE:
             self._stock_surface_item: Optional[GLMeshItem] = None
             self._pos_item: Optional[GLScatterPlotItem] = None
 
+            # 소재 모델 추적: 객체 id가 바뀌면 아이템을 재생성합니다
+            self._cached_stock_model_id: Optional[int] = None
+
+            # 시각 업데이트 프레임 카운터 (RGBA 텍스처 업로드 스로틀링)
+            self._vis_frame_count: int = 0
+
             self._add_grid_and_axes()
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             self.setMinimumSize(400, 300)
@@ -348,26 +354,61 @@ if _PYQTGRAPH_GL_AVAILABLE:
             )
 
         def set_stock(self, stock_model: Optional[StockModel], refresh_surface: bool = True):
+            """소재 모델을 설정하고 뷰어를 업데이트합니다.
+
+            동일 객체를 반복 전달하는 경우(재생 중)에는 RGBA 텍스처를
+            매 프레임 업로드하지 않고 2프레임마다 갱신합니다.
+            소재 모델 객체가 교체될 때는 모든 GL 아이템을 재생성합니다.
+            """
+            self._vis_frame_count += 1
+            stock_changed = (id(stock_model) != self._cached_stock_model_id)
             self._stock_model = stock_model
-            self._update_stock_overlay(refresh_surface=refresh_surface)
+            self._cached_stock_model_id = id(stock_model) if stock_model is not None else None
+
+            if stock_changed:
+                self._clear_stock_items(clear_surface=True)
+                self._vis_frame_count = 0
+
+            # 재생 중 오버레이 이미지 업로드를 2프레임마다 수행
+            # (매 프레임 GPU 텍스처 업로드는 불필요한 대역폭 소비)
+            skip_overlay = (not stock_changed) and (self._vis_frame_count % 2 != 0)
+            self._update_stock_overlay(
+                refresh_surface=refresh_surface,
+                skip_overlay_update=skip_overlay,
+            )
 
         def set_current_position(self, pos: Optional[np.ndarray], tool: Optional[Tool] = None):
+            """현재 공구 위치를 업데이트합니다.
+
+            [성능 개선] GLScatterPlotItem을 재생성하지 않고 데이터만 갱신합니다.
+            """
             self._current_pos = pos
             self._current_tool = tool
-            self._clear_pos_item()
 
             if pos is None:
+                if self._pos_item is not None:
+                    self._pos_item.setVisible(False)
                 return
 
             size = max(2.5, tool.radius if tool is not None else 3.0) * 4.0
-            item = GLScatterPlotItem(
-                pos=np.array([pos], dtype=np.float32),
-                size=size,
-                color=(1.0, 0.3, 0.3, 0.95),
-                pxMode=False,
-            )
-            self.addItem(item)
-            self._pos_item = item
+
+            if self._pos_item is None:
+                # 최초 생성
+                self._pos_item = GLScatterPlotItem(
+                    pos=np.array([pos], dtype=np.float32),
+                    size=size,
+                    color=(1.0, 0.3, 0.3, 0.95),
+                    pxMode=False,
+                )
+                self.addItem(self._pos_item)
+            else:
+                # 기존 아이템 위치·크기만 업데이트 (GL 객체 재생성 없음)
+                self._pos_item.setVisible(True)
+                self._pos_item.setData(
+                    pos=np.array([pos], dtype=np.float32),
+                    size=size,
+                    color=(1.0, 0.3, 0.3, 0.95),
+                )
 
         def highlight_segment(self, index: int):
             # 공구 위치와 footprint가 더 중요한 뷰이므로 별도 세그먼트 하이라이트는 생략합니다.
@@ -389,94 +430,191 @@ if _PYQTGRAPH_GL_AVAILABLE:
             self._color_mode = mode
             self._segment_color_data = data
             self._redraw_toolpath()
+            # 색상 모드 변경 시에는 오버레이 이미지를 새로 그려야 하므로
+            # 기존 오버레이 아이템을 제거하고 재생성합니다.
+            if self._stock_overlay_item is not None:
+                self.removeItem(self._stock_overlay_item)
+                self._stock_overlay_item = None
             self._update_stock_overlay()
 
-        def _update_stock_overlay(self, refresh_surface: bool = True):
-            self._clear_stock_items(clear_surface=refresh_surface)
+        def _update_stock_overlay(
+            self,
+            refresh_surface: bool = True,
+            skip_overlay_update: bool = False,
+        ):
+            """소재 오버레이를 업데이트합니다.
 
+            [성능 개선]
+            GL 아이템(경계 박스, footprint 오버레이, 3D 메시)을 재생성하지 않고
+            데이터만 갱신합니다. 소재 모델 객체가 바뀔 때만 재생성합니다.
+
+            Args:
+                refresh_surface: True 이면 3D 메시도 갱신합니다.
+                skip_overlay_update: True 이면 footprint 이미지 GPU 업로드를 건너뜁니다.
+            """
             if not self._show_stock or self._stock_model is None:
-                if refresh_surface and self._stock_surface_item is not None:
-                    self.removeItem(self._stock_surface_item)
-                    self._stock_surface_item = None
+                # 아이템을 숨깁니다 (제거하지 않음)
+                if self._stock_bounds_item is not None:
+                    self._stock_bounds_item.setVisible(False)
+                if self._stock_overlay_item is not None:
+                    self._stock_overlay_item.setVisible(False)
+                if self._stock_surface_item is not None:
+                    self._stock_surface_item.setVisible(False)
                 return
 
             min_c = self._stock_model.min_corner
             max_c = self._stock_model.max_corner
 
-            edges = np.array([
-                [min_c[0], min_c[1], min_c[2]], [max_c[0], min_c[1], min_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], min_c[1], min_c[2]], [max_c[0], max_c[1], min_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], max_c[1], min_c[2]], [min_c[0], max_c[1], min_c[2]], [np.nan, np.nan, np.nan],
-                [min_c[0], max_c[1], min_c[2]], [min_c[0], min_c[1], min_c[2]], [np.nan, np.nan, np.nan],
-                [min_c[0], min_c[1], max_c[2]], [max_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], min_c[1], max_c[2]], [max_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], max_c[1], max_c[2]], [min_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [min_c[0], max_c[1], max_c[2]], [min_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [min_c[0], min_c[1], min_c[2]], [min_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], min_c[1], min_c[2]], [max_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [max_c[0], max_c[1], min_c[2]], [max_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-                [min_c[0], max_c[1], min_c[2]], [min_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
-            ], dtype=np.float32)
-
-            self._stock_bounds_item = GLLinePlotItem(
-                pos=edges,
-                color=(0.80, 0.62, 0.24, 0.85),
-                width=1.5,
-                antialias=True,
-            )
-            self.addItem(self._stock_bounds_item)
-
-            if refresh_surface and self._stock_model.has_material_removal():
-                vertices, faces = self._stock_model.to_mesh_data(max_vertices=30000)
-            else:
-                vertices, faces = np.zeros((0, 3), dtype=float), np.zeros((0, 3), dtype=int)
-
-            if len(vertices) > 0 and len(faces) > 0:
-                mesh_data = gl.MeshData(
-                    vertexes=vertices.astype(np.float32),
-                    faces=faces.astype(np.uint32),
+            # ── 경계 박스: 소재 범위가 바뀌지 않으면 재생성 불필요 ──────
+            if self._stock_bounds_item is None:
+                edges = np.array([
+                    [min_c[0], min_c[1], min_c[2]], [max_c[0], min_c[1], min_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], min_c[1], min_c[2]], [max_c[0], max_c[1], min_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], max_c[1], min_c[2]], [min_c[0], max_c[1], min_c[2]], [np.nan, np.nan, np.nan],
+                    [min_c[0], max_c[1], min_c[2]], [min_c[0], min_c[1], min_c[2]], [np.nan, np.nan, np.nan],
+                    [min_c[0], min_c[1], max_c[2]], [max_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], min_c[1], max_c[2]], [max_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], max_c[1], max_c[2]], [min_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [min_c[0], max_c[1], max_c[2]], [min_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [min_c[0], min_c[1], min_c[2]], [min_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], min_c[1], min_c[2]], [max_c[0], min_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [max_c[0], max_c[1], min_c[2]], [max_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                    [min_c[0], max_c[1], min_c[2]], [min_c[0], max_c[1], max_c[2]], [np.nan, np.nan, np.nan],
+                ], dtype=np.float32)
+                self._stock_bounds_item = GLLinePlotItem(
+                    pos=edges,
+                    color=(0.80, 0.62, 0.24, 0.85),
+                    width=1.5,
+                    antialias=True,
                 )
-                surface = GLMeshItem(
-                    meshdata=mesh_data,
-                    smooth=False,
-                    drawEdges=False,
-                    drawFaces=True,
-                    color=(0.62, 0.52, 0.38, 0.55),
-                    glOptions="translucent",
-                )
-                self.addItem(surface)
-                self._stock_surface_item = surface
-            elif refresh_surface and self._stock_surface_item is not None:
-                self.removeItem(self._stock_surface_item)
-                self._stock_surface_item = None
+                self.addItem(self._stock_bounds_item)
+            self._stock_bounds_item.setVisible(True)
 
+            # ── footprint 오버레이: setData()로 이미지만 업데이트 ─────────
             overlay_mode = "footprint" if self._color_mode == "default" else self._color_mode
             image = self._stock_model.get_trace_image_rgba(mode=overlay_mode)
-            overlay = GLImageItem(image, smooth=False, glOptions="translucent")
-            overlay.scale(self._stock_model.resolution, self._stock_model.resolution, 1.0)
-            overlay.translate(
-                float(self._stock_model.min_corner[0]),
-                float(self._stock_model.min_corner[1]),
-                float(self._stock_model.max_corner[2] + 0.05),
-            )
-            self.addItem(overlay)
-            self._stock_overlay_item = overlay
+
+            if self._stock_overlay_item is None:
+                # 최초 생성 (위치·스케일은 소재 범위 기반으로 고정)
+                overlay = GLImageItem(image, smooth=False, glOptions="translucent")
+                overlay.scale(self._stock_model.resolution, self._stock_model.resolution, 1.0)
+                overlay.translate(
+                    float(min_c[0]),
+                    float(min_c[1]),
+                    float(max_c[2] + 0.05),
+                )
+                self.addItem(overlay)
+                self._stock_overlay_item = overlay
+            elif not skip_overlay_update:
+                # 이미지 데이터만 갱신 (GL 객체 재생성 없음, 스로틀링 적용)
+                self._stock_overlay_item.setData(image)
+                self._stock_overlay_item.setVisible(True)
+
+            # ── 3D 표면 메시: refresh_surface가 True일 때만 갱신 ──────────
+            if refresh_surface:
+                if self._stock_model.has_material_removal():
+                    vertices, faces = self._stock_model.to_mesh_data(max_vertices=30000)
+                    if len(vertices) > 0 and len(faces) > 0:
+                        mesh_data = gl.MeshData(
+                            vertexes=vertices.astype(np.float32),
+                            faces=faces.astype(np.uint32),
+                        )
+                        if self._stock_surface_item is None:
+                            surface = GLMeshItem(
+                                meshdata=mesh_data,
+                                smooth=False,
+                                drawEdges=False,
+                                drawFaces=True,
+                                color=(0.62, 0.52, 0.38, 0.55),
+                                glOptions="translucent",
+                            )
+                            self.addItem(surface)
+                            self._stock_surface_item = surface
+                        else:
+                            # 메시 데이터만 교체 (GL 객체 재생성 없음)
+                            self._stock_surface_item.setMeshData(meshdata=mesh_data)
+                            self._stock_surface_item.setVisible(True)
+                    elif self._stock_surface_item is not None:
+                        self._stock_surface_item.setVisible(False)
 
         def _redraw_toolpath(self):
+            """공구경로를 GL 씬에 그립니다.
+
+            [성능 개선]
+            세그먼트별 GLLinePlotItem 생성(N개) 대신 GL_LINES 모드로 2개의 아이템으로 병합합니다.
+            - 급속 이동: 1개 GLLinePlotItem
+            - 절삭 이동: 1개 GLLinePlotItem (색상 모드 시 정점별 색상 사용)
+            이로 인해 재생 중 GL draw call 수를 N → 2-3개로 줄입니다.
+            """
             self._clear_path_items()
             if self._toolpath is None:
                 return
 
+            # GL_LINES 모드: 점 쌍 (시작, 끝) 으로 구성된 배열
+            rapid_pairs: list[np.ndarray] = []
+            cutting_pairs: list[np.ndarray] = []
+            cutting_colors: list[np.ndarray] = []
+
+            use_color_data = (
+                self._color_mode != "default"
+                and self._segment_color_data is not None
+            )
+
             for i, seg in enumerate(self._toolpath.segments):
-                pts = _arc_to_polyline(seg) if seg.is_arc else np.array([seg.start_pos, seg.end_pos], dtype=np.float32)
-                color = self._segment_color(seg, i)
-                width = 1.5 if seg.motion_type == MotionType.RAPID else 2.0
+                if seg.is_arc and seg.arc_center is not None:
+                    pts = _arc_to_polyline(seg).astype(np.float32)
+                else:
+                    pts = np.array([seg.start_pos, seg.end_pos], dtype=np.float32)
+
+                # GL_LINES: 연속 점 쌍 생성 (n-1 개의 선분)
+                n = len(pts)
+                if n < 2:
+                    continue
+                pairs = np.empty((2 * (n - 1), 3), dtype=np.float32)
+                pairs[0::2] = pts[:-1]
+                pairs[1::2] = pts[1:]
+
+                if seg.motion_type == MotionType.RAPID:
+                    rapid_pairs.append(pairs)
+                else:
+                    cutting_pairs.append(pairs)
+                    if use_color_data:
+                        # 정점별 색상: 각 쌍에 동일한 세그먼트 색상 적용
+                        col = np.array(self._segment_color(seg, i), dtype=np.float32)
+                        seg_colors = np.tile(col, (len(pairs), 1))
+                        cutting_colors.append(seg_colors)
+
+            if rapid_pairs:
+                all_pts = np.vstack(rapid_pairs)
                 item = GLLinePlotItem(
-                    pos=pts.astype(np.float32),
-                    color=color,
-                    width=width,
+                    pos=all_pts,
+                    color=(0.28, 0.55, 1.0, 0.55),
+                    width=1.5,
                     antialias=True,
+                    mode='lines',
                 )
+                self.addItem(item)
+                self._path_items.append(item)
+
+            if cutting_pairs:
+                all_pts = np.vstack(cutting_pairs)
+                if use_color_data and cutting_colors:
+                    all_colors = np.vstack(cutting_colors)
+                    item = GLLinePlotItem(
+                        pos=all_pts,
+                        color=all_colors,
+                        width=2.0,
+                        antialias=True,
+                        mode='lines',
+                    )
+                else:
+                    item = GLLinePlotItem(
+                        pos=all_pts,
+                        color=(0.22, 0.92, 0.36, 1.0),
+                        width=2.0,
+                        antialias=True,
+                        mode='lines',
+                    )
                 self.addItem(item)
                 self._path_items.append(item)
 

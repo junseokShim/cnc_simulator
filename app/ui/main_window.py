@@ -86,6 +86,20 @@ class MainWindow(QMainWindow):
         self._is_playing = False
         self._play_speed = 1.0
 
+        # 재생 프레임 카운터 (UI 스로틀링 용도)
+        self._playback_frame_count: int = 0
+
+        # 누적 이동 거리 캐시 (매 프레임 O(N) 합산 방지)
+        self._cumulative_distances: Optional[np.ndarray] = None
+        self._cumulative_cutting_distances: Optional[np.ndarray] = None
+
+        # 사전 계산된 세그먼트 메트릭 (재생 중 dict 생성 방지)
+        self._precomputed_metrics: Optional[list] = None
+
+        # 성능 프로파일링 (프레임 시간, 씬 아이템 수 모니터링)
+        self._perf_frame_times: list = []
+        self._perf_last_log_frame: int = 0
+
         # 타이머 (재생 드라이브)
         self._play_timer = QTimer(self)
         self._play_timer.timeout.connect(self._update_simulation_step)
@@ -132,6 +146,45 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.warning(f"기본 설정 로드 실패, 기본값 사용: {e}")
             self._machining_model = MachiningModel()
+
+    def _precompute_toolpath_distances(self):
+        """
+        공구경로의 누적 이동 거리를 미리 계산합니다.
+
+        재생 중 매 프레임 O(N) 합산을 O(1) 조회로 대체하여 성능을 개선합니다.
+        """
+        if self._toolpath is None:
+            self._cumulative_distances = None
+            self._cumulative_cutting_distances = None
+            return
+
+        segs = self._toolpath.segments
+        n = len(segs)
+        dist = np.zeros(n + 1, dtype=float)
+        cut_dist = np.zeros(n + 1, dtype=float)
+        for i, seg in enumerate(segs):
+            d = seg.get_distance()
+            dist[i + 1] = dist[i] + d
+            cut_dist[i + 1] = cut_dist[i] + (d if seg.is_cutting_move else 0.0)
+        self._cumulative_distances = dist
+        self._cumulative_cutting_distances = cut_dist
+
+    def _precompute_segment_metrics(self):
+        """
+        세그먼트별 부하/채터 메트릭을 리스트로 미리 캐싱합니다.
+
+        재생 중 매 프레임 dict 객체 생성을 방지합니다.
+        """
+        if self._machining_analysis is None:
+            self._precomputed_metrics = None
+            return
+        self._precomputed_metrics = [
+            {
+                "spindle_load_pct": r.spindle_load_pct,
+                "chatter_risk_score": r.chatter_risk_score,
+            }
+            for r in self._machining_analysis.results
+        ]
 
     def _setup_ui(self):
         """UI 레이아웃을 구성합니다."""
@@ -491,6 +544,10 @@ class MainWindow(QMainWindow):
             estimated_time = self._time_estimator.estimate_total_time(self._toolpath, self._machine)
             self._toolpath.estimated_time = estimated_time
 
+            # 누적 거리 및 세그먼트 메트릭 사전 계산 (재생 중 O(N)/dict 생성 제거)
+            self._precompute_toolpath_distances()
+            self._precompute_segment_metrics()
+
             self._update_all_widgets()
             self._update_status_summary()
 
@@ -720,8 +777,13 @@ class MainWindow(QMainWindow):
         # 첫 번째 세그먼트로 초기화
         self._update_ui_for_current_segment()
 
-    def _update_ui_for_current_segment(self):
-        """현재 세그먼트에 맞게 UI를 업데이트합니다."""
+    def _update_ui_for_current_segment(self, playback_throttle: bool = False):
+        """현재 세그먼트에 맞게 UI를 업데이트합니다.
+
+        Args:
+            playback_throttle: True이면 재생 중 스로틀링을 적용합니다.
+                               매 4프레임마다 패널/차트를 갱신합니다.
+        """
         if self._toolpath is None:
             return
 
@@ -740,17 +802,22 @@ class MainWindow(QMainWindow):
 
         current_tool = self._tools.get(tool_num)
 
-        # 공구 정보 패널 업데이트
-        self._tool_info_panel.update_tool(current_tool)
+        # 재생 중 스로틀링: 매 4프레임마다만 패널 업데이트
+        # (수동 조작 시에는 항상 갱신)
+        update_panels = (not playback_throttle) or (self._playback_frame_count % 4 == 0)
 
-        # 현재까지 이동 거리 계산
-        traveled_dist = sum(s.get_distance() for s in self._toolpath.segments[:completed])
-        cutting_dist = sum(
-            s.get_distance() for s in self._toolpath.segments[:completed]
-            if s.is_cutting_move
-        )
+        # 현재까지 이동 거리 계산 (사전 계산 배열로 O(1) 조회)
+        if self._cumulative_distances is not None and completed <= len(self._cumulative_distances) - 1:
+            traveled_dist = float(self._cumulative_distances[completed])
+            cutting_dist = float(self._cumulative_cutting_distances[completed])
+        else:
+            traveled_dist = sum(s.get_distance() for s in self._toolpath.segments[:completed])
+            cutting_dist = sum(
+                s.get_distance() for s in self._toolpath.segments[:completed]
+                if s.is_cutting_move
+            )
 
-        # 현재 블록의 가공 해석 결과 가져오기 (공구 정보 패널에 표시)
+        # 현재 블록의 가공 해석 결과 가져오기
         current_result = None
         result_idx = idx
         if completed > 0:
@@ -758,33 +825,32 @@ class MainWindow(QMainWindow):
         if self._machining_analysis and result_idx < len(self._machining_analysis.results):
             mr = self._machining_analysis.results[result_idx]
             current_result = mr
-            # 가공 모델 계산값으로 이송속도/주축속도 보완
             if mr.is_cutting:
                 spindle_speed = mr.spindle_speed
                 feedrate = mr.feedrate
 
-        self._tool_info_panel.update_machining_state(
-            feedrate, spindle_speed, motion_type, spindle_on
-        )
+        if update_panels:
+            # 공구 정보 패널 업데이트 (스로틀링 적용)
+            self._tool_info_panel.update_tool(current_tool)
+            self._tool_info_panel.update_machining_state(
+                feedrate, spindle_speed, motion_type, spindle_on
+            )
+            self._tool_info_panel.update_stats(
+                self._machine_state.elapsed_time, traveled_dist, cutting_dist
+            )
+            self._tool_info_panel.update_analysis(current_result)
 
-        self._tool_info_panel.update_stats(
-            self._machine_state.elapsed_time, traveled_dist, cutting_dist
-        )
-        self._tool_info_panel.update_analysis(current_result)
+            # 가공 해석 패널 현재 블록 표시 (스로틀링 적용)
+            self._analysis_panel.update_current_block(result_idx)
 
-        # 가공 해석 패널 현재 블록 표시
-        self._analysis_panel.update_current_block(result_idx)
+            # 공구경로 목록 하이라이트 (스로틀링 적용)
+            self._toolpath_widget.highlight_segment(idx)
 
-        # 시뮬레이션 제어 업데이트
+        # 항상 갱신: 3D 뷰어 공구 위치 + 시뮬레이션 제어 상태
         self._sim_controls.update_status(idx, total, line_num, tool_num, pos,
                                          self._machine_state.elapsed_time)
-
-        # 3D 뷰어 업데이트
         self._viewer.set_current_position(pos, current_tool)
         self._viewer.highlight_segment(idx)
-
-        # 공구경로 목록 하이라이트
-        self._toolpath_widget.highlight_segment(idx)
 
     # ====================================================
     # 시뮬레이션 제어 슬롯
@@ -798,6 +864,7 @@ class MainWindow(QMainWindow):
             self._machine_state.reset()
             self._reset_simulation_stock()
         self._is_playing = True
+        self._playback_frame_count = 0
         self._sim_controls.set_playing(True)
         interval = max(16, int(100 / max(0.1, self._play_speed)))
         self._play_timer.start(interval)
@@ -855,13 +922,41 @@ class MainWindow(QMainWindow):
         if self._toolpath is None:
             self._on_pause()
             return
+
+        import time as _time
+        _t0 = _time.perf_counter()
+
+        self._playback_frame_count += 1
         prev_completed = self._machine_state.completed_segments
         moved = self._machine_state.step_forward()
         if moved:
             self._apply_simulation_segment(prev_completed)
         if not moved:
             self._on_pause()
-        self._update_ui_for_current_segment()
+            self._update_ui_for_current_segment(playback_throttle=False)
+            return
+        self._update_ui_for_current_segment(playback_throttle=True)
+
+        # 프레임 시간 수집 및 주기적 로깅 (성능 모니터링)
+        _dt_ms = (_time.perf_counter() - _t0) * 1000.0
+        self._perf_frame_times.append(_dt_ms)
+        if len(self._perf_frame_times) >= 30:
+            avg = sum(self._perf_frame_times) / len(self._perf_frame_times)
+            peak = max(self._perf_frame_times)
+            item_count = self._get_scene_item_count()
+            logger.debug(
+                "[성능] 프레임 시간 avg=%.1f ms, peak=%.1f ms | GL 씬 아이템=%d개 | "
+                "프레임=%d",
+                avg, peak, item_count, self._playback_frame_count,
+            )
+            self._perf_frame_times.clear()
+
+    def _get_scene_item_count(self) -> int:
+        """GL 씬의 현재 아이템 수를 반환합니다 (메모리·렌더링 누수 감지용)."""
+        try:
+            return len(self._viewer.items)
+        except Exception:
+            return -1
 
     def _reset_simulation_stock(self, refresh_surface: bool = True):
         """재생용 스톡을 초기 상태로 되돌립니다."""
@@ -872,7 +967,15 @@ class MainWindow(QMainWindow):
         self._viewer.set_stock(self._simulation_stock_model, refresh_surface=refresh_surface)
 
     def _segment_metrics(self, segment_index: int) -> dict | None:
-        """세그먼트의 부하/채터 정보를 흔적 맵에 함께 기록하기 위한 메타데이터를 반환합니다."""
+        """세그먼트의 부하/채터 정보를 반환합니다.
+
+        사전 계산된 캐시를 사용하여 재생 중 dict 생성을 방지합니다.
+        """
+        if self._precomputed_metrics is not None:
+            if 0 <= segment_index < len(self._precomputed_metrics):
+                return self._precomputed_metrics[segment_index]
+            return None
+        # 폴백: 분석 결과에서 직접 조회
         if self._machining_analysis is None:
             return None
         if segment_index < 0 or segment_index >= len(self._machining_analysis.results):
@@ -884,9 +987,14 @@ class MainWindow(QMainWindow):
         }
 
     def _apply_simulation_segment(self, segment_index: int):
-        """재생용 스톡에 단일 세그먼트를 누적 반영합니다."""
+        """재생용 스톡에 단일 세그먼트를 누적 반영합니다.
+
+        재료 변경이 없는 세그먼트(급속이동/드웰/스핀들OFF)는
+        _rgba_dirty가 False로 유지되므로 GL 뷰어 업데이트를 건너뜁니다.
+        """
         if self._simulation_stock_model is None or self._toolpath is None:
             return
+
         self._material_removal.simulate_step(
             segment_index,
             self._toolpath,
@@ -894,10 +1002,16 @@ class MainWindow(QMainWindow):
             self._tools,
             self._segment_metrics(segment_index),
         )
-        self._viewer.set_stock(
-            self._simulation_stock_model,
-            refresh_surface=self._should_refresh_stock_surface(segment_index),
-        )
+
+        # _rgba_dirty == True: 이번 세그먼트에서 remove_material()이 호출됨
+        # → 소재 형상이 바뀌었으므로 GL 뷰어 업데이트 필요
+        # _rgba_dirty == False: 아무것도 변경되지 않음(급속이동 등)
+        # → GPU 업로드·렌더링 불필요 (프레임당 비용 절감)
+        if self._simulation_stock_model._rgba_dirty:
+            self._viewer.set_stock(
+                self._simulation_stock_model,
+                refresh_surface=self._should_refresh_stock_surface(segment_index),
+            )
 
     def _should_refresh_stock_surface(self, segment_index: int) -> bool:
         """
