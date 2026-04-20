@@ -20,12 +20,13 @@ from PySide6.QtWidgets import (
     QSplitter, QToolBar, QStatusBar, QFileDialog,
     QMessageBox, QLabel, QApplication, QTabWidget
 )
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 
 from app.ui.viewer_3d import Viewer3D
 from app.ui.simulation_controls import SimulationControlsWidget
 from app.ui.tool_info_panel import ToolInfoPanel
+from app.ui.tool_library_panel import ToolLibraryPanel
 from app.ui.toolpath_widget import ToolpathListWidget
 from app.ui.report_dialog import ReportDialog
 from app.ui.analysis_panel import MachiningAnalysisPanel
@@ -34,7 +35,7 @@ from app.ui.stock_settings_panel import StockSettingsPanel
 from app.parser.gcode_parser import GCodeParser
 from app.simulation.machine_state import MachineState
 from app.simulation.time_estimator import TimeEstimator
-from app.simulation.machining_model import MachiningModel, MachiningModelConfig, create_machining_model_from_config
+from app.simulation.machining_model import MachiningModel, create_machining_model_from_config
 from app.verification.checker import VerificationChecker
 from app.verification.rules import VerificationWarning
 from app.geometry.stock_model import StockModel
@@ -50,6 +51,7 @@ from app.models.project import (
 from app.models.machining_result import MachiningAnalysis
 from app.services.project_service import ProjectService
 from app.services.report_service import ReportService
+from app.services.tool_library_service import ToolLibraryService
 from app.utils.logger import get_logger
 
 logger = get_logger("main_window")
@@ -110,6 +112,7 @@ class MainWindow(QMainWindow):
         self._time_estimator = TimeEstimator()
         self._report_service = ReportService()
         self._project_service = ProjectService()
+        self._tool_library_service = ToolLibraryService()
         self._machining_model: Optional[MachiningModel] = None
         self._material_removal = MaterialRemovalSimulator()
 
@@ -242,6 +245,10 @@ class MainWindow(QMainWindow):
         self._analysis_panel = MachiningAnalysisPanel()
         right_tab.addTab(self._analysis_panel, "가공 해석")
 
+        # 탭 3: 공구 라이브러리 편집
+        self._tool_library_panel = ToolLibraryPanel()
+        right_tab.addTab(self._tool_library_panel, "공구 라이브러리")
+
         main_splitter.addWidget(right_tab)
         main_splitter.setSizes([1180, 320])
         central_layout.addWidget(main_splitter)
@@ -260,7 +267,10 @@ class MainWindow(QMainWindow):
             self._on_color_mode_changed
         )
         self._stock_settings_panel.apply_requested.connect(self._on_stock_settings_applied)
+        self._tool_library_panel.apply_requested.connect(self._on_tool_library_applied)
+        self._tool_library_panel.save_requested.connect(self._on_tool_library_saved)
         self._sync_stock_settings_panel()
+        self._sync_tool_library_panel()
 
     def _setup_menu(self):
         """메뉴 바를 구성합니다."""
@@ -571,6 +581,7 @@ class MainWindow(QMainWindow):
             self._machine = self._project_config.machine_config
             self._tools = self._project_config.get_tools_dict()
             self._sync_stock_settings_panel()
+            self._sync_tool_library_panel()
 
             if self._project_config.nc_file_path:
                 self.load_nc_file(self._project_config.nc_file_path)
@@ -633,6 +644,90 @@ class MainWindow(QMainWindow):
             resolution,
             origin_mode=origin_mode,
         )
+
+    def _default_tool_library_path(self) -> str:
+        """프로젝트가 없을 때 사용할 기본 공구 라이브러리 경로를 반환합니다."""
+
+        return os.path.normpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "configs",
+                "default_tools.yaml",
+            )
+        )
+
+    def _tool_library_source_text(self) -> str:
+        """공구 라이브러리 패널에 표시할 현재 저장 대상을 구성합니다."""
+
+        if self._project_config is not None and self._project_config.project_file_path:
+            lines = [f"저장 대상: 프로젝트 파일 {self._project_config.project_file_path}"]
+            if self._project_config.tool_library_file:
+                lines.append(f"참조 라이브러리: {self._project_config.tool_library_file}")
+            lines.append("프로젝트 저장 시 tools 항목에 현재 공구 정의가 반영됩니다.")
+            return "\n".join(lines)
+
+        return (
+            f"저장 대상: 기본 공구 라이브러리 {self._default_tool_library_path()}\n"
+            "프로젝트를 열지 않은 상태에서는 이 파일에 저장됩니다."
+        )
+
+    def _sync_tool_library_panel(self):
+        """현재 공구 정의를 공구 라이브러리 편집 패널에 반영합니다."""
+
+        if not hasattr(self, "_tool_library_panel"):
+            return
+
+        ordered_tools = [self._tools[key] for key in sorted(self._tools)]
+        self._tool_library_panel.set_tools(
+            ordered_tools,
+            source_label=self._tool_library_source_text(),
+        )
+
+    def _set_active_tools(self, tools: Dict[int, Tool]):
+        """현재 시뮬레이터와 프로젝트 상태에 공구 정의를 반영합니다."""
+
+        self._tools = {tool_number: tools[tool_number] for tool_number in sorted(tools)}
+        if self._project_config is not None:
+            self._project_config.tools = [self._tools[key] for key in sorted(self._tools)]
+
+    def _rebuild_tool_dependent_state(self, reset_playback: bool = True):
+        """공구 변경 후 해석/검증/UI 상태를 다시 계산합니다."""
+
+        if self._toolpath is not None and self._stock_model is None:
+            stock_min, stock_max, resolution, _ = self._get_active_stock_config()
+            self._stock_model = StockModel(stock_min, stock_max, resolution)
+            self._reset_simulation_stock()
+
+        self._sync_tool_library_panel()
+
+        if self._toolpath is not None and self._stock_model is not None:
+            self._recompute_stock_dependent_state(reset_playback=reset_playback)
+            return
+
+        tool_count = len(self._tools)
+        self._status_file_label.setText(
+            f"공구 라이브러리: {tool_count}개 | 입력값은 직경(mm), 내부 반경은 직경/2"
+        )
+        self._status_warning_label.setText("")
+        self._statusbar.showMessage("공구 라이브러리 적용 완료", 3000)
+
+    def _persist_active_tools(self) -> str:
+        """현재 공구 정의를 프로젝트 또는 기본 라이브러리 파일에 저장합니다."""
+
+        if self._project_config is not None and self._project_config.project_file_path:
+            target = self._project_config.project_file_path
+            self._project_service.save_project(self._project_config, target)
+            return target
+
+        target = self._default_tool_library_path()
+        self._tool_library_service.save_file(
+            target,
+            self._tools,
+            source_note="앱에서 저장한 기본 공구 라이브러리",
+        )
+        return target
 
     def _apply_stock_settings_to_project(self, settings: dict):
         """패널 입력값을 프로젝트 또는 기본 시뮬레이션 설정에 반영합니다."""
@@ -753,6 +848,39 @@ class MainWindow(QMainWindow):
                 f"소재 설정 적용 중 오류가 발생했습니다:\n{str(exc)}",
             )
 
+    def _on_tool_library_applied(self, tools: Dict[int, Tool]):
+        """공구 라이브러리 편집 내용을 현재 시뮬레이션에 반영합니다."""
+
+        try:
+            self._on_pause()
+            self._set_active_tools(tools)
+            self._rebuild_tool_dependent_state(reset_playback=True)
+        except Exception as exc:
+            logger.error("공구 라이브러리 적용 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "공구 라이브러리 오류",
+                f"공구 라이브러리 적용 중 오류가 발생했습니다:\n{str(exc)}",
+            )
+
+    def _on_tool_library_saved(self, tools: Dict[int, Tool]):
+        """공구 라이브러리 편집 내용을 저장하고 시뮬레이션 상태에 반영합니다."""
+
+        try:
+            self._on_pause()
+            self._set_active_tools(tools)
+            self._rebuild_tool_dependent_state(reset_playback=True)
+            saved_path = self._persist_active_tools()
+            self._sync_tool_library_panel()
+            self._statusbar.showMessage(f"공구 라이브러리 저장 완료: {saved_path}", 4000)
+        except Exception as exc:
+            logger.error("공구 라이브러리 저장 실패: %s", exc, exc_info=True)
+            QMessageBox.critical(
+                self,
+                "공구 라이브러리 저장 오류",
+                f"공구 라이브러리 저장 중 오류가 발생했습니다:\n{str(exc)}",
+            )
+
     def _update_all_widgets(self):
         """모든 위젯을 현재 데이터로 업데이트합니다."""
         if self._toolpath is None:
@@ -831,7 +959,7 @@ class MainWindow(QMainWindow):
 
         if update_panels:
             # 공구 정보 패널 업데이트 (스로틀링 적용)
-            self._tool_info_panel.update_tool(current_tool)
+            self._tool_info_panel.update_tool(current_tool, requested_tool_number=tool_num)
             self._tool_info_panel.update_machining_state(
                 feedrate, spindle_speed, motion_type, spindle_on
             )

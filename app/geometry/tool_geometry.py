@@ -39,7 +39,7 @@ class ToolGeometry:
         """
         return {
             'center': np.array([0.0, 0.0, 0.0]),  # 공구 끝점이 원점
-            'radius': tool.radius,
+            'radius': tool.radius_mm,
             'height': tool.flute_length,
             'type': tool.tool_type,
             'corner_radius': tool.corner_radius,
@@ -60,17 +60,17 @@ class ToolGeometry:
         Returns:
             (min_corner, max_corner) 경계 박스 튜플
         """
-        radius = tool.radius
+        radius_mm = tool.radius_mm
 
         # 기본 경계 박스: 시작점과 끝점의 최솟값/최댓값
         min_corner = np.minimum(start, end)
         max_corner = np.maximum(start, end)
 
         # XY 방향으로 공구 반경만큼 확장
-        min_corner[0] -= radius
-        min_corner[1] -= radius
-        max_corner[0] += radius
-        max_corner[1] += radius
+        min_corner[0] -= radius_mm
+        min_corner[1] -= radius_mm
+        max_corner[0] += radius_mm
+        max_corner[1] += radius_mm
 
         # Z 방향으로 절삭날 길이만큼 위로 확장 (공구 몸통 고려)
         # 공구 끝점이 start/end이므로 절삭날은 그 위에 있음
@@ -94,9 +94,9 @@ class ToolGeometry:
         Returns:
             (vertices, faces) 메시 데이터 튜플
         """
-        radius = tool.radius
+        radius_mm = tool.radius_mm
         flute_length = tool.flute_length
-        shank_radius = radius * 0.8  # 생크 반경 (날부보다 약간 작게)
+        shank_radius = radius_mm * 0.8  # 생크 반경 (날부보다 약간 작게)
 
         vertices = []
         faces = []
@@ -113,8 +113,8 @@ class ToolGeometry:
         vertices.append([position[0], position[1], bottom_z])
 
         for angle in angles:
-            x = position[0] + radius * np.cos(angle)
-            y = position[1] + radius * np.sin(angle)
+            x = position[0] + radius_mm * np.cos(angle)
+            y = position[1] + radius_mm * np.sin(angle)
             vertices.append([x, y, bottom_z])
 
         # 상단 원 꼭짓점
@@ -122,8 +122,8 @@ class ToolGeometry:
         vertices.append([position[0], position[1], top_z])
 
         for angle in angles:
-            x = position[0] + radius * np.cos(angle)
-            y = position[1] + radius * np.sin(angle)
+            x = position[0] + radius_mm * np.cos(angle)
+            y = position[1] + radius_mm * np.sin(angle)
             vertices.append([x, y, top_z])
 
         # 바닥 면 (팬 형태)

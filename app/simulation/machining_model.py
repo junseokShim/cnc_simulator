@@ -1,87 +1,42 @@
 """
-가공 해석 모델(Machining Model) 오케스트레이터 모듈
+가공 해석 오케스트레이터
 
-NC 공구경로를 세그먼트 단위로 해석하여 스핀들 부하, 채터 위험도,
-X/Y/Z 축별 진동 등을 추정합니다.
-
-[주요 개선사항 - 비현실 모델 수정]
-
-1. 공중 이송(G1 Air-Cut) vs 절삭 분리
-   - 이전: G1 이동이면 무조건 ae=0.5D 적용 → 공중이송에서도 절삭급 부하 발생
-   - 개선: stock_model이 있을 때 engaged_samples==0이면 is_cutting=False로 강제 전환
-   - 스핀들 부하 = baseline + axis_motion (절삭 성분 없음) → 공중이송 ~8~12%
-
-2. 채터 위험도 포화 방지
-   - 이전: 선형 공식 + 가산 보정 → 거의 항상 100%
-   - 개선: 비선형 시그모이드 공식 + 승산적 보정 → 의미 있는 분포
-
-3. 기계 특성 반영 (DN Solutions T4000)
-   - 이전: 하드코딩된 7500W 단일 값
-   - 개선: MachineProfile 객체를 통해 모든 파라미터 공급
-
-[스핀들 부하 분해]
-    total_load = baseline_component + axis_motion_component + cutting_component
-
-    비절삭 (G0/G1 공중이송):
-        total ≈ 7~12% (기저 7% + 이송 속도에 비례 axis)
-
-    실제 절삭:
-        total = 7% + 1~3% + (Altintas 계산 절삭 부하)
-        → 재료/조건에 따라 20~80%
-
-[파이프라인]
-  NC 세그먼트
-      │
-      ▼
-  CuttingConditionExtractor   → CuttingFeatures (초기 추정)
-      │
-      ▼ (stock_model 있으면 AE/AP/접촉 보정)
-  [Stock Engagement Gate]     → is_cutting 최종 결정
-      │
-      ├──▶ MechanisticCuttingForceModel → SpindleLoadPrediction (분해 포함)
-      │
-      └──▶ StabilityLobeChatterModel   → ChatterRiskPrediction (비선형 점수)
-
-[교체 지점]
-  - SpindleLoadPredictor 인터페이스를 구현하는 ML 모델로 교체 가능
-  - ChatterRiskPredictor 인터페이스를 구현하는 ML 모델로 교체 가능
-  - docs/model_replacement_guide.md 참조
-
-[참고 문헌]
-  [1] Altintas, Y. (2000). Manufacturing Automation. Cambridge.
-  [2] Altintas, Y., & Budak, E. (1995). CIRP Annals, 44(1), 357–362.
-  [3] Schmitz, T.L., & Smith, K.S. (2009). Machining Dynamics. Springer.
+공구경로를 세그먼트 단위로 해석하여
+부하/진동/채터/공구 메타/디버그 정보를 하나의 결과로 통합합니다.
 """
 from __future__ import annotations
 
 import math
+import os
+from dataclasses import replace as dc_replace
 from typing import Dict, List, Optional
 
 import numpy as np
 
 from app.geometry.stock_model import StockModel
 from app.machines.machine_profile import MachineProfile, MachineProfileRegistry
+from app.models.chatter_model import StabilityLobeChatterModel
 from app.models.cutting_conditions import (
     CuttingConditionExtractor,
-    DOWN_MILLING,
-    SLOTTING,
-    UP_MILLING,
     STATE_AIR_FEED,
     STATE_CUTTING,
+    STATE_ENTRY_CUT,
+    STATE_EXIT_CUT,
     STATE_PLUNGE,
     STATE_RAPID,
+    UP_MILLING,
+    compute_engagement_angles,
 )
-from app.models.cutting_force_model import MechanisticCuttingForceModel
-from app.models.chatter_model import StabilityLobeChatterModel
+from app.models.cutting_force_model import (
+    MATERIAL_FORCE_COEFFICIENTS,
+    MechanisticCuttingForceModel,
+)
 from app.models.machining_result import (
     ChatterRiskLevel,
     MachiningAnalysis,
     SegmentMachiningResult,
 )
-from app.models.model_interfaces import (
-    ChatterRiskPredictor,
-    SpindleLoadPredictor,
-)
+from app.models.model_interfaces import ChatterRiskPredictor, SpindleLoadPredictor
 from app.models.tool import Tool, ToolType
 from app.models.toolpath import MotionSegment, MotionType, Toolpath
 from app.utils.logger import get_logger
@@ -90,77 +45,36 @@ logger = get_logger("machining_model")
 
 
 class MachiningModelConfig:
-    """
-    가공 해석 모델 설정 파라미터
-
-    모든 값은 `configs/simulation_options.yaml`의 `machining` 섹션에서 덮어쓸 수 있습니다.
-    기계 특성값은 MachineProfile 객체로 분리됩니다.
-
-    [수학 모델 파라미터]
-    스핀들 부하 모델 (MechanisticCuttingForceModel):
-        - material:           재료 키 (aluminum/steel_mild/steel_hard/stainless/titanium/cast_iron)
-        - default_ae_ratio:   반경방향 맞물림 기본 비율 (ae/D, stock 없을 때 fallback)
-        - default_ap_mm:      축방향 절입 기본값 (mm, stock 없을 때 fallback)
-        - milling_mode:       업밀링/다운밀링/슬로팅
-
-    채터 위험 모델 (StabilityLobeChatterModel):
-        - (기계 특성 파라미터는 MachineProfile로 공급됨)
-
-    기계 프로파일 (MachineProfile):
-        - machine_profile_id: 사용할 기계 프로파일 ID (기본: t4000)
-    """
+    """가공 해석 모델 설정"""
 
     def __init__(self, config_dict: Optional[dict] = None):
         cfg = config_dict or {}
 
-        # ---- 재료 ----
         self.material: str = cfg.get("material", "aluminum")
-
-        # ---- 기본 절삭 조건 (stock 모델 없을 때 fallback) ----
         self.default_ae_ratio: float = float(cfg.get("default_ae_ratio", 0.5))
         self.default_ap_mm: float = float(cfg.get("default_ap_mm", 2.0))
         self.default_flute_count: int = int(cfg.get("default_flute_count", 4))
         self.milling_mode: str = cfg.get("milling_mode", UP_MILLING)
-
-        # ---- 기계 프로파일 ID ----
         self.machine_profile_id: str = cfg.get("machine_profile_id", "t4000")
-
-        # ---- MRR 참조값 (정규화용) ----
         self.mrr_reference_mm3min: float = float(cfg.get("mrr_reference_mm3min", 50000.0))
 
-        # ---- 경보 기준 ----
         self.high_load_threshold_pct: float = float(cfg.get("high_load_threshold_pct", 80.0))
         self.aggressive_ap_ratio: float = float(cfg.get("aggressive_ap_ratio", 0.50))
         self.aggressive_ae_ratio: float = float(cfg.get("aggressive_ae_ratio", 0.65))
-        self.unstable_chatter_threshold: float = float(
-            cfg.get("unstable_chatter_threshold", 0.65)
-        )
+        self.unstable_chatter_threshold: float = float(cfg.get("unstable_chatter_threshold", 0.65))
+        self.motion_risk_warning_threshold: float = float(cfg.get("motion_risk_warning_threshold", 0.58))
         self.xy_vibration_warning_um: float = float(cfg.get("xy_vibration_warning_um", 12.0))
         self.z_vibration_warning_um: float = float(cfg.get("z_vibration_warning_um", 9.0))
-        self.resultant_vibration_warning_um: float = float(
-            cfg.get("resultant_vibration_warning_um", 16.0)
-        )
+        self.resultant_vibration_warning_um: float = float(cfg.get("resultant_vibration_warning_um", 16.0))
+        self.rapid_vibration_warning_um: float = float(cfg.get("rapid_vibration_warning_um", 6.0))
 
-        # ---- stock 탐색 샘플 수 ----
         self.engagement_sample_count: int = int(cfg.get("engagement_sample_count", 7))
+        self.entry_contact_threshold: float = float(cfg.get("entry_contact_threshold", 0.45))
+        self.exit_contact_threshold: float = float(cfg.get("exit_contact_threshold", 0.60))
 
 
 class MachiningModel:
-    """
-    CNC 가공 해석 모델 클래스
-
-    [파이프라인]
-    1. CuttingConditionExtractor로 세그먼트→CuttingFeatures 추출
-    2. StockModel 기반 AE/AP 보정 및 공중이송 판별 (is_cutting 최종 확정)
-    3. SpindleLoadPredictor로 절삭력/스핀들 부하 예측 (분해 포함)
-    4. ChatterRiskPredictor로 채터 위험도/진동 진폭 예측 (비선형)
-    5. SegmentMachiningResult 조립 및 경보 생성
-
-    [ML 교체 지점]
-    - load_predictor: SpindleLoadPredictor를 구현한 임의의 모델
-    - chatter_predictor: ChatterRiskPredictor를 구현한 임의의 모델
-    - docs/model_replacement_guide.md 참조
-    """
+    """공구경로 해석 모델"""
 
     def __init__(
         self,
@@ -171,20 +85,21 @@ class MachiningModel:
     ):
         self.config = config or MachiningModelConfig()
 
-        # ── 기계 프로파일 로드 ──────────────────────────────────────
         if machine_profile is not None:
             self._machine_profile = machine_profile
         else:
             profile_id = self.config.machine_profile_id
             loaded = MachineProfileRegistry.get(profile_id)
             if loaded is None:
-                # configs/machines/ 디렉토리에서 일괄 로드 시도
-                import os
-                configs_dir = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "..", "..", "configs", "machines"
+                configs_dir = os.path.normpath(
+                    os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)),
+                        "..",
+                        "..",
+                        "configs",
+                        "machines",
+                    )
                 )
-                configs_dir = os.path.normpath(configs_dir)
                 MachineProfileRegistry.load_from_directory(configs_dir)
                 loaded = MachineProfileRegistry.get(profile_id)
             self._machine_profile = loaded or MachineProfileRegistry.get_default()
@@ -195,41 +110,30 @@ class MachiningModel:
             self._machine_profile.model_id,
         )
 
-        # ── 교체 가능한 예측기 (기본: 수학적 모델) ──────────────────
-        self._load_predictor: SpindleLoadPredictor = (
-            load_predictor or MechanisticCuttingForceModel()
-        )
-        self._chatter_predictor: ChatterRiskPredictor = (
-            chatter_predictor or StabilityLobeChatterModel()
-        )
-
-        # ── 절삭 조건 추출기 ─────────────────────────────────────────
+        self._load_predictor: SpindleLoadPredictor = load_predictor or MechanisticCuttingForceModel()
+        self._chatter_predictor: ChatterRiskPredictor = chatter_predictor or StabilityLobeChatterModel()
         self._extractor = CuttingConditionExtractor(
             default_ae_ratio=self.config.default_ae_ratio,
             default_ap_mm=self.config.default_ap_mm,
             default_flute_count=self.config.default_flute_count,
             milling_mode=self.config.milling_mode,
+            rapid_traverse_mm_min=self._machine_profile.rapid_traverse_mm_min,
         )
 
-        # ── 모델 파라미터 딕셔너리 (predictors에 전달) ───────────────
-        # 기계 프로파일 파라미터가 기본값으로 사용되고
-        # 재료 등 추가 파라미터가 병합됩니다.
         machine_params = self._machine_profile.to_params_dict()
-        self._load_params: dict = {
+        self._load_params = {
             **machine_params,
             "material": self.config.material,
             "mrr_reference_mm3min": self.config.mrr_reference_mm3min,
         }
-        self._chatter_params: dict = {
-            **machine_params,
-        }
+        self._chatter_params = dict(machine_params)
 
-        # ── 내부 상태 ─────────────────────────────────────────────────
         self._prev_load: float = 0.0
 
     @property
     def machine_profile(self) -> MachineProfile:
-        """현재 사용 중인 기계 프로파일"""
+        """현재 적용 중인 기계 프로파일"""
+
         return self._machine_profile
 
     def analyze_toolpath(
@@ -238,18 +142,8 @@ class MachiningModel:
         tools: Dict[int, Tool],
         stock_model: Optional[StockModel] = None,
     ) -> MachiningAnalysis:
-        """
-        전체 공구경로를 세그먼트 단위로 해석합니다.
+        """전체 공구경로를 해석합니다."""
 
-        Args:
-            toolpath:    분석할 공구경로
-            tools:       공구 번호 → Tool 매핑
-            stock_model: 초기 스톡 모델 (있으면 AE/AP를 실제 잔여 소재 기준으로 계산하고
-                         공중이송 세그먼트를 정확히 판별)
-
-        Returns:
-            MachiningAnalysis
-        """
         logger.info(
             "가공 해석 시작: %d개 세그먼트, 기계=%s",
             len(toolpath.segments),
@@ -264,20 +158,21 @@ class MachiningModel:
         total_removed_volume = 0.0
 
         for index, seg in enumerate(toolpath.segments):
+            prev_result = results[-1] if results else None
+            next_seg = toolpath.segments[index + 1] if index + 1 < len(toolpath.segments) else None
             tool = self._resolve_tool(seg, tools)
             result = self._analyze_segment(
                 seg=seg,
                 tool=tool,
                 stock_model=analysis_stock,
-                segment_index=index,
+                prev_result=prev_result,
+                next_seg=next_seg,
             )
             results.append(result)
 
             if result.is_cutting:
                 self._prev_load = result.spindle_load_pct
-                total_removed_volume += (
-                    result.radial_depth_ae * result.axial_depth_ap * seg.get_distance()
-                )
+                total_removed_volume += result.radial_depth_ae * result.axial_depth_ap * seg.get_distance()
                 if analysis_stock is not None:
                     self._apply_segment_to_stock(analysis_stock, seg, tool, result)
 
@@ -288,15 +183,16 @@ class MachiningModel:
                 "spindle_rated_power_w": self._machine_profile.spindle_rated_power_w,
                 "machine_efficiency": self._machine_profile.machine_efficiency,
                 "machine_stiffness": self._machine_profile.machine_stiffness_factor,
-                "tool_overhang_factor": 1.0 / max(self._machine_profile.tool_holder_rigidity, 0.1),
                 "k_n_per_um": self._machine_profile.tool_tip_stiffness_n_per_um,
                 "zeta": self._machine_profile.damping_ratio,
                 "f_natural_hz": self._machine_profile.natural_frequency_hz,
-                "default_ae_ratio": self.config.default_ae_ratio,
-                "default_ap_mm": self.config.default_ap_mm,
+                "rapid_vibration_sensitivity": self._machine_profile.rapid_vibration_sensitivity,
+                "servo_jerk_sensitivity": self._machine_profile.servo_jerk_sensitivity,
                 "xy_vibration_warning_um": self.config.xy_vibration_warning_um,
                 "z_vibration_warning_um": self.config.z_vibration_warning_um,
                 "resultant_vibration_warning_um": self.config.resultant_vibration_warning_um,
+                "rapid_vibration_warning_um": self.config.rapid_vibration_warning_um,
+                "motion_risk_warning_threshold": self.config.motion_risk_warning_threshold,
             },
             machine_profile_name=self._machine_profile.name,
             machine_profile_id=self._machine_profile.model_id,
@@ -313,22 +209,27 @@ class MachiningModel:
         return analysis
 
     def _resolve_tool(self, seg: MotionSegment, tools: Dict[int, Tool]) -> Tool:
-        """정의되지 않은 공구도 해석이 가능하도록 임시 공구를 생성합니다."""
+        """공구가 누락된 경우에도 모델이 동작하도록 보수적 fallback 공구를 만듭니다."""
+
         tool = tools.get(seg.tool_number)
         if tool is not None:
             return tool
 
         diameter = 10.0
+        logger.warning("공구 T%d가 정의되지 않아 fallback 공구를 사용합니다.", seg.tool_number)
         return Tool(
             tool_number=seg.tool_number,
             name=f"임시 공구 T{seg.tool_number}",
             tool_type=ToolType.END_MILL,
+            tool_category="EM",
             diameter=diameter,
             length=diameter * 6.0,
             flute_length=max(self.config.default_ap_mm * 3.0, diameter * 2.0),
             corner_radius=0.0,
             material="카바이드",
             flute_count=self.config.default_flute_count,
+            overhang_mm=diameter * 4.0,
+            notes="정의되지 않은 공구로 인해 fallback 사용",
         )
 
     def _analyze_segment(
@@ -336,31 +237,14 @@ class MachiningModel:
         seg: MotionSegment,
         tool: Tool,
         stock_model: Optional[StockModel],
-        segment_index: int,
+        prev_result: Optional[SegmentMachiningResult],
+        next_seg: Optional[MotionSegment],
     ) -> SegmentMachiningResult:
-        """
-        단일 세그먼트를 해석합니다.
+        """단일 세그먼트를 해석합니다."""
 
-        [공중이송 판별 로직 - 핵심 개선]
-        이전 코드는 stock 접촉이 없어도 features.is_cutting=True를 유지하여
-        ae=0.5D가 그대로 절삭력 계산에 사용되었습니다.
-
-        개선:
-          stock_model이 있고 engaged_samples==0이면
-          → is_cutting=False로 강제 전환
-          → 절삭 성분 없이 baseline+axis 부하만 계산됨
-          → 공중이송 G1이 절삭보다 높은 부하를 보이는 문제 해결
-        """
-        del segment_index
-
-        diameter = max(tool.diameter, 0.1)
-
-        # ── 1. 절삭 조건 초기 추출 ─────────────────────────────────
+        diameter_mm = max(tool.diameter_mm, 0.1)
         features = self._extractor.extract(seg, tool)
-
-        # ── 2. 스톡 기반 AE/AP 보정 및 공중이송 판별 (핵심 수정) ──
         contact_ratio = 0.0
-        machining_state = features.machining_state
 
         if stock_model is not None and features.is_cutting:
             engagement = stock_model.estimate_segment_engagement(
@@ -369,48 +253,48 @@ class MachiningModel:
                 tool,
                 sample_count=self.config.engagement_sample_count,
             )
-            total_samples = self.config.engagement_sample_count
-            engaged_n = engagement.get("engaged_samples", 0)
+            engaged_n = int(engagement.get("engaged_samples", 0))
 
             if engaged_n > 0:
-                # ---- 실제 소재 접촉 ----
-                from dataclasses import replace as dc_replace
-                from app.models.cutting_conditions import compute_engagement_angles
-                import math as _math
-
-                ae_s = float(np.clip(engagement["ae"], 0.0, tool.diameter))
+                ae_s = float(np.clip(engagement["ae"], 0.0, diameter_mm))
                 ap_s = float(np.clip(engagement["ap"], 0.0, tool.flute_length))
-
-                phi_st_s, phi_ex_s = compute_engagement_angles(
-                    ae_s, diameter, self.config.milling_mode
+                contact_ratio = float(
+                    np.clip(
+                        engagement.get("engaged_path_ratio", engagement.get("engagement_ratio", 0.0)),
+                        0.0,
+                        1.0,
+                    )
                 )
 
-                contact_ratio = float(engaged_n) / max(float(total_samples), 1.0)
-                machining_state = STATE_PLUNGE if features.is_plunge else STATE_CUTTING
+                if tool.is_drill:
+                    if features.is_plunge:
+                        ae_s = min(diameter_mm, max(ae_s, diameter_mm * 0.90))
+                    else:
+                        ae_s = min(ae_s, diameter_mm * 0.35)
+                elif tool.tool_category == "REM":
+                    ae_s = min(diameter_mm, ae_s * 0.92)
 
+                if tool.is_drill and features.is_plunge:
+                    phi_st_s, phi_ex_s = 0.0, math.pi
+                else:
+                    phi_st_s, phi_ex_s = compute_engagement_angles(ae_s, diameter_mm, self.config.milling_mode)
+
+                state = self._classify_motion_state(features, prev_result, next_seg, contact_ratio)
                 features = dc_replace(
                     features,
                     axial_depth_ap=ap_s,
                     radial_depth_ae=ae_s,
-                    radial_ratio=ae_s / diameter if diameter > 0 else 0.0,
+                    radial_ratio=ae_s / diameter_mm if diameter_mm > 0.0 else 0.0,
                     phi_entry_rad=phi_st_s,
                     phi_exit_rad=phi_ex_s,
-                    phi_entry_deg=_math.degrees(phi_st_s),
-                    phi_exit_deg=_math.degrees(phi_ex_s),
-                    engagement_arc_deg=_math.degrees(phi_ex_s - phi_st_s),
-                    mrr_mm3_per_min=ae_s * ap_s * seg.feedrate,
-                    machining_state=machining_state,
+                    phi_entry_deg=math.degrees(phi_st_s),
+                    phi_exit_deg=math.degrees(phi_ex_s),
+                    engagement_arc_deg=math.degrees(phi_ex_s - phi_st_s),
+                    mrr_mm3_per_min=ae_s * ap_s * max(features.effective_feedrate, 0.0),
+                    machining_state=state,
                     contact_ratio=contact_ratio,
                 )
             else:
-                # ---- 소재 비접촉: 공중이송으로 강제 전환 ────────────
-                # 이것이 "G1 공중이송이 절삭보다 높은 부하" 문제를 해결하는
-                # 핵심 수정입니다.
-                # engaged_samples==0 → 실제로 소재와 접촉하지 않음
-                # → is_cutting=False로 전환하여 cutting_load_pct=0 보장
-                from dataclasses import replace as dc_replace
-
-                machining_state = STATE_AIR_FEED
                 features = dc_replace(
                     features,
                     axial_depth_ap=0.0,
@@ -422,52 +306,50 @@ class MachiningModel:
                     phi_exit_deg=0.0,
                     engagement_arc_deg=0.0,
                     mrr_mm3_per_min=0.0,
-                    is_cutting=False,    # ← 공중이송으로 강제 전환!
-                    machining_state=machining_state,
+                    is_cutting=False,
+                    machining_state=STATE_AIR_FEED,
                     contact_ratio=0.0,
                 )
-
         elif seg.motion_type == MotionType.RAPID:
-            machining_state = STATE_RAPID
-            from dataclasses import replace as dc_replace
-            features = dc_replace(features, machining_state=STATE_RAPID)
-
-        # ── 3. 스핀들 부하 예측 (Altintas 기계론적 모델 + 부하 분해) ─
-        # 재료별 Ktc를 채터 모델에도 전달
-        from app.models.cutting_force_model import MATERIAL_FORCE_COEFFICIENTS
-        mat_coeff = MATERIAL_FORCE_COEFFICIENTS.get(
-            self.config.material, MATERIAL_FORCE_COEFFICIENTS["default"]
-        )
-        chatter_params = dict(self._chatter_params)
-        chatter_params["Ktc"] = mat_coeff["Ktc"]
-        chatter_params["Krc_ratio"] = mat_coeff["Krc_ratio"]
+            features = dc_replace(
+                features,
+                is_cutting=False,
+                machining_state=STATE_RAPID,
+                axial_depth_ap=0.0,
+                radial_depth_ae=0.0,
+                radial_ratio=0.0,
+                mrr_mm3_per_min=0.0,
+            )
+        elif features.is_cutting:
+            state = self._classify_motion_state(features, prev_result, next_seg, 1.0)
+            features = dc_replace(features, machining_state=state, contact_ratio=1.0)
 
         load_pred = self._load_predictor.predict(features, self._load_params)
 
-        # ── 4. 채터/진동 위험도 예측 (비선형 점수화) ────────────────
-        chatter_pred = self._chatter_predictor.predict(features, load_pred, chatter_params)
-
-        # ── 5. 위험 수준 분류 ─────────────────────────────────────────
-        cs = chatter_pred.chatter_risk_score
-        if not features.is_cutting:
-            risk_level = ChatterRiskLevel.NONE
-        elif cs < 0.25:
-            risk_level = ChatterRiskLevel.LOW
-        elif cs < 0.50:
-            risk_level = ChatterRiskLevel.MEDIUM
-        elif cs < 0.75:
-            risk_level = ChatterRiskLevel.HIGH
+        chatter_params = dict(self._chatter_params)
+        material_coeff = load_pred.debug_components.get("coefficients")
+        if isinstance(material_coeff, dict) and material_coeff.get("Ktc"):
+            chatter_params["Ktc"] = float(material_coeff["Ktc"])
+            chatter_params["Krc_ratio"] = float(material_coeff["Krc"]) / max(float(material_coeff["Ktc"]), 1e-6)
         else:
-            risk_level = ChatterRiskLevel.CRITICAL
+            base_coeff = MATERIAL_FORCE_COEFFICIENTS.get(self.config.material, MATERIAL_FORCE_COEFFICIENTS["default"])
+            chatter_params["Ktc"] = float(base_coeff["Ktc"])
+            chatter_params["Krc_ratio"] = float(base_coeff["Krc_ratio"])
 
-        # ── 6. 경보 메시지 생성 ───────────────────────────────────────
+        chatter_pred = self._chatter_predictor.predict(features, load_pred, chatter_params)
+        risk_level = self._classify_chatter_level(features.is_cutting, chatter_pred.chatter_risk_score)
+
         load_change = abs(load_pred.spindle_load_pct - self._prev_load)
         warning_messages = self._build_segment_warnings(
+            machining_state=features.machining_state,
+            tool_category=features.tool_category,
             ae_ratio=features.radial_ratio,
             ap=features.axial_depth_ap,
-            diameter=diameter,
+            diameter=diameter_mm,
             spindle_load_pct=load_pred.spindle_load_pct,
-            chatter_score=cs,
+            chatter_score=chatter_pred.chatter_risk_score,
+            motion_risk_score=chatter_pred.motion_risk_score,
+            motion_vibration_um=chatter_pred.motion_vibration_um,
             is_plunge=features.is_plunge,
             is_ramp=features.is_ramp,
             load_change=load_change,
@@ -477,41 +359,58 @@ class MachiningModel:
             resultant_vibration_um=chatter_pred.resultant_vibration_um,
             stability_margin=chatter_pred.stability_margin,
         )
+        if "fallback" in tool.notes or "정의되지" in tool.notes:
+            warning_messages.insert(0, f"T{tool.tool_number} 공구 정의가 없어 fallback 공구 모델을 사용했습니다.")
 
-        # ── 7. 결과 조립 ──────────────────────────────────────────────
         risk_factors = dict(chatter_pred.risk_factors)
-        risk_factors.update({
-            "가공상태": machining_state,
-            "접촉비율": round(contact_ratio, 3),
-            "절삭력_Ft_N": round(load_pred.cutting_force_ft, 2),
-            "절삭력_Fr_N": round(load_pred.cutting_force_fr, 2),
-            "절삭력_Fa_N": round(load_pred.cutting_force_fa, 2),
-            "force_x_n": round(load_pred.force_x, 2),
-            "force_y_n": round(load_pred.force_y, 2),
-            "force_z_n": round(load_pred.force_z, 2),
-            "토크_Nm": round(load_pred.torque_nm, 3),
-            "전력_W": round(load_pred.power_w, 1),
-            "기저부하_pct": round(load_pred.baseline_load_pct, 1),
-            "축이송부하_pct": round(load_pred.axis_motion_load_pct, 1),
-            "절삭부하_pct": round(load_pred.cutting_load_pct, 1),
-            "스핀들부하_pct": round(load_pred.spindle_load_pct, 1),
-            "MRR_mm3min": round(features.mrr_mm3_per_min, 0),
-        })
+        risk_factors.update(
+            {
+                "tool_number": tool.tool_number,
+                "tool_name": tool.name,
+                "tool_category": tool.tool_category,
+                "tool_overhang_mm": round(tool.effective_overhang_mm, 3),
+                "contact_ratio": round(features.contact_ratio, 3),
+                "estimated_ft_n": round(load_pred.cutting_force_ft, 3),
+                "estimated_fr_n": round(load_pred.cutting_force_fr, 3),
+                "estimated_fa_n": round(load_pred.cutting_force_fa, 3),
+                "estimated_fx_n": round(load_pred.force_x, 3),
+                "estimated_fy_n": round(load_pred.force_y, 3),
+                "estimated_fz_n": round(load_pred.force_z, 3),
+                "torque_nm": round(load_pred.torque_nm, 3),
+                "spindle_power_w": round(load_pred.power_w, 3),
+                "baseline_load_pct": round(load_pred.baseline_load_pct, 3),
+                "axis_motion_load_pct": round(load_pred.axis_motion_load_pct, 3),
+                "cutting_load_pct": round(load_pred.cutting_load_pct, 3),
+                "spindle_load_pct": round(load_pred.spindle_load_pct, 3),
+                "mrr_mm3min": round(features.mrr_mm3_per_min, 3),
+                "motion_vibration_um": round(chatter_pred.motion_vibration_um, 3),
+                "cutting_vibration_um": round(chatter_pred.cutting_vibration_um, 3),
+                "motion_risk_score": round(chatter_pred.motion_risk_score, 3),
+                "chatter_raw_score": round(chatter_pred.chatter_raw_score, 3),
+            }
+        )
+        if load_pred.debug_components:
+            risk_factors["spindle_load_debug"] = dict(load_pred.debug_components)
+
+        engagement_ratio = max(
+            features.contact_ratio,
+            features.radial_ratio * min(1.0, features.axial_depth_ap / max(tool.flute_length, diameter_mm)),
+        )
 
         return SegmentMachiningResult(
             segment_id=seg.segment_id,
             spindle_speed=features.spindle_rpm,
-            feedrate=features.feedrate,
-            tool_diameter=diameter,
+            feedrate=features.effective_feedrate,
+            tool_diameter=diameter_mm,
             flute_count=features.flute_count,
+            tool_category=features.tool_category,
+            tool_overhang_mm=tool.effective_overhang_mm,
             cutting_speed=features.cutting_speed_vc,
             feed_per_tooth=features.feed_per_tooth_fz,
             axial_depth_ap=features.axial_depth_ap,
             radial_depth_ae=features.radial_depth_ae,
             radial_ratio=features.radial_ratio,
-            engagement_ratio=features.radial_ratio * min(
-                1.0, features.axial_depth_ap / max(tool.flute_length, diameter)
-            ),
+            engagement_ratio=engagement_ratio,
             material_removal_rate=features.mrr_mm3_per_min,
             estimated_cutting_force=load_pred.cutting_force_ft,
             estimated_spindle_power=load_pred.power_w,
@@ -524,14 +423,17 @@ class MachiningModel:
             vibration_y_um=chatter_pred.vibration_y_um,
             vibration_z_um=chatter_pred.vibration_z_um,
             resultant_vibration_um=chatter_pred.resultant_vibration_um,
+            motion_vibration_um=chatter_pred.motion_vibration_um,
+            cutting_vibration_um=chatter_pred.cutting_vibration_um,
             chatter_risk_score=chatter_pred.chatter_risk_score,
+            motion_risk_score=chatter_pred.motion_risk_score,
             chatter_risk_level=risk_level,
             direction_change_angle=features.direction_change_deg,
             is_plunge=features.is_plunge,
             is_ramp=features.is_ramp,
             is_cutting=features.is_cutting,
-            machining_state=machining_state,
-            contact_ratio=contact_ratio,
+            machining_state=features.machining_state,
+            contact_ratio=features.contact_ratio,
             baseline_load_pct=load_pred.baseline_load_pct,
             axis_motion_load_pct=load_pred.axis_motion_load_pct,
             cutting_load_pct=load_pred.cutting_load_pct,
@@ -539,13 +441,56 @@ class MachiningModel:
             warning_messages=warning_messages,
         )
 
+    def _classify_motion_state(
+        self,
+        features,
+        prev_result: Optional[SegmentMachiningResult],
+        next_seg: Optional[MotionSegment],
+        contact_ratio: float,
+    ) -> str:
+        """상태별 motion state를 세분화합니다."""
+
+        if features.machining_state == STATE_RAPID:
+            return STATE_RAPID
+        if not features.is_cutting:
+            return STATE_AIR_FEED
+        if features.is_plunge:
+            return STATE_PLUNGE
+
+        prev_is_cutting = bool(prev_result and prev_result.is_cutting)
+        next_is_cutting_move = bool(next_seg and next_seg.is_cutting_move and next_seg.motion_type != MotionType.RAPID)
+
+        if not prev_is_cutting or contact_ratio <= self.config.entry_contact_threshold:
+            return STATE_ENTRY_CUT
+        if not next_is_cutting_move or contact_ratio <= self.config.exit_contact_threshold:
+            return STATE_EXIT_CUT
+        return STATE_CUTTING
+
+    @staticmethod
+    def _classify_chatter_level(is_cutting: bool, chatter_score: float) -> ChatterRiskLevel:
+        """절삭 채터 수준을 단계화합니다."""
+
+        if not is_cutting:
+            return ChatterRiskLevel.NONE
+        if chatter_score < 0.25:
+            return ChatterRiskLevel.LOW
+        if chatter_score < 0.50:
+            return ChatterRiskLevel.MEDIUM
+        if chatter_score < 0.75:
+            return ChatterRiskLevel.HIGH
+        return ChatterRiskLevel.CRITICAL
+
     def _build_segment_warnings(
         self,
+        machining_state: str,
+        tool_category: str,
         ae_ratio: float,
         ap: float,
         diameter: float,
         spindle_load_pct: float,
         chatter_score: float,
+        motion_risk_score: float,
+        motion_vibration_um: float,
         is_plunge: bool,
         is_ramp: bool,
         load_change: float,
@@ -555,20 +500,36 @@ class MachiningModel:
         resultant_vibration_um: float,
         stability_margin: float,
     ) -> List[str]:
-        """사용자에게 보여줄 세그먼트 경보 메시지를 구성합니다."""
+        """경보 메시지를 생성합니다."""
+
         warnings: List[str] = []
+
+        if machining_state == STATE_RAPID:
+            if motion_risk_score >= self.config.motion_risk_warning_threshold:
+                warnings.append("급속 이송의 방향 전환/가감속 충격이 큽니다.")
+            if motion_vibration_um >= self.config.rapid_vibration_warning_um:
+                warnings.append("급속 이송 진동이 높습니다. 코너링/짧은 블록을 점검하세요.")
+            return warnings
+
+        if machining_state == STATE_AIR_FEED:
+            if motion_risk_score >= self.config.motion_risk_warning_threshold:
+                warnings.append("공중이송이지만 과도한 가감속/코너링으로 진동이 큽니다.")
+            return warnings
+
+        if tool_category == "DR" and not is_plunge:
+            warnings.append("드릴 계열 공구의 측면 절삭은 보수적으로 해석됩니다.")
 
         if ae_ratio >= 0.85:
             warnings.append("풀폭 절삭에 가까운 맞물림입니다.")
         elif ae_ratio >= self.config.aggressive_ae_ratio:
             warnings.append("반경방향 맞물림이 커서 절삭 부하가 증가합니다.")
 
-        ap_ratio = ap / diameter if diameter > 0 else 0.0
+        ap_ratio = ap / diameter if diameter > 0.0 else 0.0
         if ap_ratio >= self.config.aggressive_ap_ratio:
             warnings.append("축방향 절입이 커서 절삭력이 증가합니다.")
 
         if is_plunge and ap >= max(self.config.default_ap_mm * 1.2, 2.0):
-            warnings.append("깊은 플런지 진입으로 불안정 가능성이 있습니다.")
+            warnings.append("깊은 플런지 진입으로 축방향 불안정 가능성이 있습니다.")
         elif is_ramp and ap >= max(self.config.default_ap_mm, 1.0):
             warnings.append("램프 진입 구간으로 절삭 부하가 증가합니다.")
 
@@ -579,15 +540,18 @@ class MachiningModel:
             warnings.append("블록 간 부하 변동이 큽니다.")
 
         if stability_margin < 1.0:
-            warnings.append(
-                f"안정성 마진 SM={stability_margin:.2f} < 1: 채터 불안정 구간입니다."
-            )
+            warnings.append(f"안정성 마진 SM={stability_margin:.2f} < 1: 채터 불안정 구간입니다.")
         elif stability_margin < 1.5:
-            warnings.append(
-                f"안정성 마진 SM={stability_margin:.2f}: 안정 경계에 가깝습니다."
-            )
+            warnings.append(f"안정성 마진 SM={stability_margin:.2f}: 안정 경계에 가깝습니다.")
         elif chatter_score >= self.config.unstable_chatter_threshold:
             warnings.append("채터/불안정 절삭 위험이 높습니다.")
+
+        if motion_risk_score >= self.config.motion_risk_warning_threshold and machining_state in {
+            STATE_ENTRY_CUT,
+            STATE_EXIT_CUT,
+            STATE_PLUNGE,
+        }:
+            warnings.append("과도 구간의 이송 충격이 절삭 진동을 키울 수 있습니다.")
 
         if vibration_x_um >= self.config.xy_vibration_warning_um:
             warnings.append("X축 예상 진동이 커서 측면 품질 저하 가능성이 있습니다.")
@@ -596,9 +560,7 @@ class MachiningModel:
         if vibration_z_um >= self.config.z_vibration_warning_um:
             warnings.append("Z축 예상 진동이 커서 바닥면/깊이 품질 저하 가능성이 있습니다.")
         if resultant_vibration_um >= self.config.resultant_vibration_warning_um:
-            warnings.append(
-                "합성 진동이 높습니다. AE/AP 또는 이송 조건 완화를 권장합니다."
-            )
+            warnings.append("합성 진동이 높습니다. AE/AP 또는 이송 조건 완화를 권장합니다.")
 
         return warnings
 
@@ -609,7 +571,8 @@ class MachiningModel:
         tool: Tool,
         result: SegmentMachiningResult,
     ):
-        """분석 중 얻은 세그먼트 절삭 결과를 임시 스톡에 반영합니다."""
+        """절삭 결과를 스톡에 반영합니다."""
+
         if not result.is_cutting:
             return
 
@@ -623,7 +586,8 @@ class MachiningModel:
             stock_model.remove_material(start, end, tool, metrics)
 
     def _segment_to_points(self, seg: MotionSegment, tool: Tool) -> np.ndarray:
-        """세그먼트를 스톡 갱신용 polyline 점집합으로 변환합니다."""
+        """원호 세그먼트를 스톡 반영용 polyline으로 변환합니다."""
+
         if not seg.is_arc or seg.arc_center is None or seg.arc_radius is None:
             return np.array([seg.start_pos, seg.end_pos], dtype=float)
 
@@ -637,13 +601,13 @@ class MachiningModel:
 
         if clockwise:
             if end_angle > start_angle:
-                end_angle -= 2 * math.pi
+                end_angle -= 2.0 * math.pi
         elif end_angle < start_angle:
-            end_angle += 2 * math.pi
+            end_angle += 2.0 * math.pi
 
         total_angle = abs(end_angle - start_angle)
         arc_length = seg.arc_radius * total_angle
-        step_pitch = max(tool.radius * 0.5, 0.5)
+        step_pitch = max(tool.radius_mm * 0.5, 0.5)
         steps = max(8, min(96, int(math.ceil(arc_length / step_pitch))))
 
         points = np.zeros((steps + 1, 3), dtype=float)
@@ -657,5 +621,6 @@ class MachiningModel:
 
 
 def create_machining_model_from_config(config_dict: dict) -> MachiningModel:
-    """설정 딕셔너리에서 MachiningModel을 생성합니다."""
+    """설정 딕셔너리로부터 `MachiningModel`을 생성합니다."""
+
     return MachiningModel(MachiningModelConfig(config_dict))

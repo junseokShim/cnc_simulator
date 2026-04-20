@@ -1,11 +1,10 @@
-# CNC 시뮬레이터 프로젝트 파일 예제
-project_name: "단순 포켓 가공 프로젝트"
+# CNC 시뮬레이터 프로젝트 예제
+project_name: "예제 포켓 가공 프로젝트"
 version: "1.0"
 
-# NC 파일 경로 (프로젝트 파일 기준 상대 경로 또는 절대 경로)
+# 프로젝트 파일 기준 상대 경로
 nc_file: "simple_pocket.nc"
 
-# 머신 설정
 machine:
   name: "3축 VMC"
   axes:
@@ -16,27 +15,20 @@ machine:
   max_feedrate: 10000.0
   rapid_feedrate: 15000.0
 
-# 소재 설정
-# origin_mode 기준으로 origin과 size를 입력하면 min/max는 자동 계산됩니다.
 stock:
   origin_mode: top_center
   origin: [0.0, 0.0, 0.0]
   size: [120.0, 120.0, 30.0]
-  min: [-60.0, -60.0, -30.0]
-  max: [60.0, 60.0, 0.0]
   resolution: 2.0
 
-# 공구 설정
-tools:
-  - tool_number: 1
-    name: "플랫 엔드밀 Ø10"
-    tool_type: "END_MILL"
-    diameter: 10.0
-    length: 75.0
-    flute_length: 25.0
-    corner_radius: 0.0
+# 기본 라이브러리 파일과 프로젝트 전용 inline 정의를 함께 사용할 수 있습니다.
+tool_library_file: "../configs/default_tools.yaml"
+tool_library:
+  definitions:
+    - "T5 = 12mm EM 4F OH55 L90 RIGID=1.05 KC=0.95"
+    - "T6 = 10mm EM 4F OH48 L85 RIGID=1.00 KC=1.00"
+    - "T7 = 7.5mm DR 2F OH70 L95 RIGID=0.92 KC=1.03"
 
-# 시뮬레이션 옵션
 simulation_options:
   playback_speed: 1.0
   show_stock: true

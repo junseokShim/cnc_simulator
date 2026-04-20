@@ -141,8 +141,8 @@ class StockModel:
             segment_metrics: 세그먼트 해석 결과 일부
                 예) {"spindle_load_pct": 42.0, "chatter_risk_score": 0.32}
         """
-        radius = tool.radius
-        coverage_radius = radius + self.resolution * 0.5
+        radius_mm = tool.radius_mm
+        coverage_radius = radius_mm + self.resolution * 0.5
 
         dx = float(end[0] - start[0])
         dy = float(end[1] - start[1])
@@ -238,13 +238,15 @@ class StockModel:
             {
               "ae": 반경방향 맞물림(mm),
               "ap": 축방향 절입(mm),
-              "engagement_ratio": 접촉 비율(0~1),
-              "engaged_samples": 유효 샘플 수,
+              "engagement_ratio": 샘플 평균 단면 점유율(0~1),
+              "engaged_samples": 재질이 남아 있던 샘플 수,
+              "sample_count": 실제 평가한 샘플 수,
+              "engaged_path_ratio": 경로 기준 접촉 비율(0~1),
             }
         """
-        radius = max(tool.radius, self.resolution * 0.5)
-        diameter = max(tool.diameter, self.resolution)
-        flute_length = max(tool.flute_length, diameter * 0.5)
+        radius_mm = max(tool.radius_mm, self.resolution * 0.5)
+        diameter_mm = max(tool.diameter_mm, self.resolution)
+        flute_length = max(tool.flute_length, diameter_mm * 0.5)
 
         dx = float(end[0] - start[0])
         dy = float(end[1] - start[1])
@@ -253,7 +255,14 @@ class StockModel:
         seg_len = max(float(np.linalg.norm(end - start)), 0.0)
 
         if seg_len < 1e-9:
-            return {"ae": 0.0, "ap": 0.0, "engagement_ratio": 0.0, "engaged_samples": 0}
+            return {
+                "ae": 0.0,
+                "ap": 0.0,
+                "engagement_ratio": 0.0,
+                "engaged_samples": 0,
+                "sample_count": 0,
+                "engaged_path_ratio": 0.0,
+            }
 
         if dist_xy > 1e-9:
             tangent = np.array([dx, dy], dtype=float) / dist_xy
@@ -272,8 +281,8 @@ class StockModel:
 
         for t in np.linspace(0.0, 1.0, sample_count):
             center = start + (end - start) * float(t)
-            bbox_min = center[:2] - (radius + self.resolution)
-            bbox_max = center[:2] + (radius + self.resolution)
+            bbox_min = center[:2] - (radius_mm + self.resolution)
+            bbox_max = center[:2] + (radius_mm + self.resolution)
             ix_min, iy_min = self._world_to_grid(bbox_min[0], bbox_min[1])
             ix_max, iy_max = self._world_to_grid(bbox_max[0], bbox_max[1])
 
@@ -286,7 +295,7 @@ class StockModel:
                     cx, cy = self._grid_to_world(ix, iy)
                     rel = np.array([cx - center[0], cy - center[1]], dtype=float)
                     radial_dist = float(np.linalg.norm(rel))
-                    if radial_dist > radius:
+                    if radial_dist > radius_mm:
                         continue
 
                     stock_z = self.grid[ix, iy]
@@ -309,24 +318,33 @@ class StockModel:
 
             if dist_xy > 1e-9:
                 width = (max(normal_coords) - min(normal_coords)) + self.resolution
-                ae = min(diameter, max(self.resolution, width))
+                ae = min(diameter_mm, max(self.resolution, width))
             else:
-                ae = min(diameter, max(self.resolution, 2.0 * max(normal_coords)))
+                ae = min(diameter_mm, max(self.resolution, 2.0 * max(normal_coords)))
 
-            cross_section_area = math.pi * (radius ** 2)
+            cross_section_area = math.pi * (radius_mm ** 2)
             area_ratio = min(1.0, engaged_cell_area / max(cross_section_area, 1e-6))
 
             sample_ae.append(float(ae))
             sample_area_ratio.append(float(area_ratio))
 
         if not sample_ap:
-            return {"ae": 0.0, "ap": 0.0, "engagement_ratio": 0.0, "engaged_samples": 0}
+            return {
+                "ae": 0.0,
+                "ap": 0.0,
+                "engagement_ratio": 0.0,
+                "engaged_samples": 0,
+                "sample_count": sample_count,
+                "engaged_path_ratio": 0.0,
+            }
 
         return {
             "ae": float(np.mean(sample_ae)),
             "ap": float(np.mean(sample_ap)),
             "engagement_ratio": float(np.mean(sample_area_ratio)),
             "engaged_samples": len(sample_ap),
+            "sample_count": sample_count,
+            "engaged_path_ratio": float(len(sample_ap) / max(sample_count, 1)),
         }
 
     def _get_tool_z_at(self, px: float, py: float,

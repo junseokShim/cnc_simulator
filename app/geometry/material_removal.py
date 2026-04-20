@@ -149,7 +149,7 @@ class MaterialRemovalSimulator:
 
         # 적절한 분할 수 계산 (최소 4개, 최대 64개)
         arc_length = segment.arc_radius * angle
-        num_steps = max(4, min(64, int(arc_length / (tool.radius * 0.5))))
+        num_steps = max(4, min(64, int(arc_length / (tool.radius_mm * 0.5))))
 
         from app.simulation.motion_planner import MotionPlanner
         from app.models.machine import create_default_machine

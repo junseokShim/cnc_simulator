@@ -80,6 +80,12 @@ G0 Z5
         assert "radial_depth_ae_mm" in rows[0]
         assert "axial_depth_ap_mm" in rows[0]
         assert "vibration_z_um" in rows[0]
+        assert "machining_state" in rows[0]
+        assert "motion_vibration_um" in rows[0]
+        assert "cutting_vibration_um" in rows[0]
+        assert "chatter_raw_score" in rows[0]
+        assert "baseline_load_pct" in rows[0]
+        assert "material_ktc" in rows[0]
 
         with open(saved["summary"], "r", encoding="utf-8-sig", newline="") as file:
             summary_rows = list(csv.DictReader(file))
@@ -87,5 +93,6 @@ G0 Z5
         keys = {row["key"] for row in summary_rows}
         assert "total_segments" in keys
         assert "max_spindle_load_pct" in keys
+        assert "max_motion_vibration_um" in keys
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

@@ -69,6 +69,8 @@ class MachineProfile:
     tool_tip_stiffness_n_per_um: float = 20.0  # 공구 끝단 강성 (N/μm)
     natural_frequency_hz: float = 800.0    # 공구-스핀들 고유주파수 (Hz)
     chatter_sensitivity: float = 1.0       # 채터 민감도 계수
+    rapid_vibration_sensitivity: float = 1.0  # 급속 이송 진동 민감도
+    servo_jerk_sensitivity: float = 1.0       # 급가감속/코너링 민감도
 
     # ---- 스핀들 부하 분해 파라미터 ----
     # 스핀들 무부하 기저 전력비: 스핀들이 돌기만 해도 소비되는 전력 비율
@@ -129,6 +131,8 @@ class MachineProfile:
             "zeta": self.damping_ratio,
             "f_natural_hz": self.natural_frequency_hz,
             "chatter_sensitivity": self.chatter_sensitivity,
+            "rapid_vibration_sensitivity": self.rapid_vibration_sensitivity,
+            "servo_jerk_sensitivity": self.servo_jerk_sensitivity,
             # 공구 홀더 계수 (강성이 클수록 overhang_factor 작음)
             "tool_overhang_factor": 1.0 / max(self.tool_holder_rigidity, 0.1),
             # 스핀들 부하 분해
@@ -257,6 +261,8 @@ def _t4000_defaults() -> MachineProfile:
         tool_tip_stiffness_n_per_um=22.0,
         natural_frequency_hz=900.0,
         chatter_sensitivity=0.95,
+        rapid_vibration_sensitivity=0.92,
+        servo_jerk_sensitivity=0.90,
         baseline_power_ratio=0.07,
         axis_motion_power_ratio=0.04,
         machine_efficiency=0.85,

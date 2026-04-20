@@ -124,6 +124,7 @@ class ProjectConfig:
     project_name: str = "새 프로젝트"
     version: str = "1.0"
     project_file_path: str = ""
+    tool_library_file: str = ""
     stock_resolution: float = 2.0
     stock_origin_mode: str = "top_center"
     stock_origin: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0], dtype=float))
@@ -204,6 +205,7 @@ class ProjectConfig:
             "version": self.version,
             "nc_file": self.nc_file_path,
             "machine": self.machine_config.to_dict(),
+            "tool_library_file": self.tool_library_file,
             "tools": [tool.to_dict() for tool in self.tools],
             "stock": {
                 "min": self.stock_min.tolist(),
@@ -256,6 +258,7 @@ class ProjectConfig:
             nc_file_path=nc_file_path,
             machine_config=create_default_machine(),
             tools=default_tools,
+            tool_library_file="configs/default_tools.yaml",
             stock_min=stock_min,
             stock_max=stock_max,
             stock_resolution=2.0,

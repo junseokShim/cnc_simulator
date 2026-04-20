@@ -390,7 +390,7 @@ if _PYQTGRAPH_GL_AVAILABLE:
                     self._pos_item.setVisible(False)
                 return
 
-            size = max(2.5, tool.radius if tool is not None else 3.0) * 4.0
+            size = max(2.5, tool.radius_mm if tool is not None else 3.0) * 4.0
 
             if self._pos_item is None:
                 # 최초 생성

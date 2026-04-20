@@ -122,7 +122,7 @@ class ReportService:
                     continue
                 lines.append(
                     f"  T{tool_number:<3}  {tool.name[:24]:<24}  "
-                    f"{tool.diameter:>10.2f}  {tool.tool_type.value:<14}  사용"
+                    f"{tool.diameter_mm:>10.2f}  {tool.tool_type.value:<14}  사용"
                 )
         else:
             lines.append("  공구 정보 없음")
@@ -226,11 +226,20 @@ class ReportService:
             )
             lines.append(f"  최대 합성 진동:   {analysis.max_resultant_vibration_um:.2f} um")
             lines.append(
+                f"  최대 급속/모션 진동: {analysis.max_motion_vibration_um:.2f} um  "
+                f"(평균 {analysis.avg_motion_vibration_um:.2f} um)"
+            )
+            lines.append(
+                f"  최대 절삭 진동:      {analysis.max_cutting_vibration_um:.2f} um  "
+                f"(평균 {analysis.avg_cutting_vibration_um:.2f} um)"
+            )
+            lines.append(
                 f"  평균 축진동 X/Y/Z: {analysis.avg_vibration_x_um:.2f} / "
                 f"{analysis.avg_vibration_y_um:.2f} / "
                 f"{analysis.avg_vibration_z_um:.2f} um"
             )
             lines.append(f"  평균 합성 진동:   {analysis.avg_resultant_vibration_um:.2f} um")
+            lines.append(f"  최대 모션 리스크:   {analysis.max_motion_risk_score * 100:.1f}%")
             lines.append(
                 f"  고위험 블록:      {analysis.high_risk_segment_count}개"
                 f" ({analysis.high_risk_pct:.1f}%)"
@@ -405,6 +414,11 @@ class ReportService:
                 round(machining_analysis.max_resultant_vibration_um, 6),
                 "um",
             )
+            add_row("analysis", "max_motion_vibration_um", round(machining_analysis.max_motion_vibration_um, 6), "um")
+            add_row("analysis", "avg_motion_vibration_um", round(machining_analysis.avg_motion_vibration_um, 6), "um")
+            add_row("analysis", "max_cutting_vibration_um", round(machining_analysis.max_cutting_vibration_um, 6), "um")
+            add_row("analysis", "avg_cutting_vibration_um", round(machining_analysis.avg_cutting_vibration_um, 6), "um")
+            add_row("analysis", "max_motion_risk_score", round(machining_analysis.max_motion_risk_score, 6), "")
             add_row("analysis", "high_risk_segment_count", machining_analysis.high_risk_segment_count, "count")
             add_row("analysis", "aggressive_segment_count", machining_analysis.aggressive_segment_count, "count")
 
@@ -424,13 +438,20 @@ class ReportService:
                     "tool_number": tool_number,
                     "name": "",
                     "tool_type": "",
+                    "tool_category": "",
                     "diameter_mm": "",
                     "radius_mm": "",
                     "length_mm": "",
                     "flute_length_mm": "",
                     "corner_radius_mm": "",
                     "flute_count": "",
+                    "overhang_mm": "",
+                    "rigidity_factor": "",
+                    "holder_rigidity_factor": "",
+                    "cutting_coefficient_factor": "",
+                    "material_coefficient_overrides": "",
                     "material": "",
+                    "notes": "",
                     "defined": False,
                 })
                 continue
@@ -439,13 +460,20 @@ class ReportService:
                 "tool_number": tool.tool_number,
                 "name": tool.name,
                 "tool_type": tool.tool_type.value,
-                "diameter_mm": round(float(tool.diameter), 6),
-                "radius_mm": round(float(tool.radius), 6),
+                "tool_category": tool.tool_category,
+                "diameter_mm": round(float(tool.diameter_mm), 6),
+                "radius_mm": round(float(tool.radius_mm), 6),
                 "length_mm": round(float(tool.length), 6),
                 "flute_length_mm": round(float(tool.flute_length), 6),
                 "corner_radius_mm": round(float(tool.corner_radius), 6),
                 "flute_count": int(tool.flute_count),
+                "overhang_mm": round(float(tool.effective_overhang_mm), 6),
+                "rigidity_factor": round(float(tool.rigidity_factor), 6),
+                "holder_rigidity_factor": round(float(tool.holder_rigidity_factor), 6),
+                "cutting_coefficient_factor": round(float(tool.cutting_coefficient_factor), 6),
+                "material_coefficient_overrides": dict(tool.material_coefficient_overrides),
                 "material": tool.material,
+                "notes": tool.notes,
                 "defined": True,
             })
 
@@ -490,6 +518,9 @@ class ReportService:
                 result = machining_analysis.results[index]
 
             tool = tools.get(segment.tool_number)
+            risk = result.risk_factors if result is not None else {}
+            load_debug = risk.get("spindle_load_debug", {}) if isinstance(risk, dict) else {}
+            coeff_debug = load_debug.get("coefficients", {}) if isinstance(load_debug, dict) else {}
             segment_distance = float(segment.get_distance())
             segment_time = self._estimate_segment_time_seconds(segment, machine)
             cumulative_distance += segment_distance
@@ -515,9 +546,11 @@ class ReportService:
                 "tool_number": segment.tool_number,
                 "tool_name": tool.name if tool is not None else "",
                 "tool_type": tool.tool_type.value if tool is not None else "",
-                "tool_diameter_mm": self._round_or_blank(tool.diameter if tool is not None else None),
-                "tool_radius_mm": self._round_or_blank(tool.radius if tool is not None else None),
+                "tool_category": getattr(result, "tool_category", tool.tool_category if tool is not None else ""),
+                "tool_diameter_mm": self._round_or_blank(tool.diameter_mm if tool is not None else None),
+                "tool_radius_mm": self._round_or_blank(tool.radius_mm if tool is not None else None),
                 "tool_flute_count": int(tool.flute_count) if tool is not None else "",
+                "tool_overhang_mm": self._result_value(result, "tool_overhang_mm"),
                 "feedrate_mm_min": round(float(segment.feedrate), 6),
                 "spindle_speed_rpm": round(float(segment.spindle_speed), 6),
                 "start_x_mm": round(float(segment.start_pos[0]), 6),
@@ -542,11 +575,16 @@ class ReportService:
                 "axial_depth_ap_mm": self._result_value(result, "axial_depth_ap"),
                 "radial_ratio": self._result_value(result, "radial_ratio"),
                 "engagement_ratio": self._result_value(result, "engagement_ratio"),
+                "contact_ratio": self._result_value(result, "contact_ratio"),
+                "machining_state": self._result_value(result, "machining_state"),
                 "material_removal_rate_mm3_min": self._result_value(result, "material_removal_rate"),
                 "estimated_cutting_force_n": self._result_value(result, "estimated_cutting_force"),
                 "estimated_spindle_power_w": self._result_value(result, "estimated_spindle_power"),
                 "spindle_load_pct": self._result_value(result, "spindle_load_pct"),
                 "aggressiveness_score": self._result_value(result, "aggressiveness_score"),
+                "baseline_load_pct": self._result_value(result, "baseline_load_pct"),
+                "axis_motion_load_pct": self._result_value(result, "axis_motion_load_pct"),
+                "cutting_load_pct": self._result_value(result, "cutting_load_pct"),
                 "estimated_force_x_n": self._result_value(result, "estimated_force_x"),
                 "estimated_force_y_n": self._result_value(result, "estimated_force_y"),
                 "estimated_force_z_n": self._result_value(result, "estimated_force_z"),
@@ -554,8 +592,41 @@ class ReportService:
                 "vibration_y_um": self._result_value(result, "vibration_y_um"),
                 "vibration_z_um": self._result_value(result, "vibration_z_um"),
                 "resultant_vibration_um": self._result_value(result, "resultant_vibration_um"),
+                "motion_vibration_um": self._result_value(result, "motion_vibration_um"),
+                "cutting_vibration_um": self._result_value(result, "cutting_vibration_um"),
+                "motion_risk_score": self._result_value(result, "motion_risk_score"),
                 "chatter_risk_score": self._result_value(result, "chatter_risk_score"),
                 "chatter_risk_pct": round(float(result.chatter_risk_pct), 6) if result is not None else "",
+                "chatter_raw_score": self._risk_factor_value(result, "chatter_raw_score"),
+                "stability_margin": self._risk_factor_value(result, "stability_margin"),
+                "ap_limit_mm": self._risk_factor_value(result, "ap_limit_mm"),
+                "dynamic_magnification": self._risk_factor_value(result, "dynamic_magnification"),
+                "tooth_passing_freq_hz": self._risk_factor_value(result, "tooth_passing_freq_hz"),
+                "effective_stiffness_n_per_mm": self._risk_factor_value(result, "effective_stiffness_n_per_mm"),
+                "slenderness_ratio": self._risk_factor_value(result, "slenderness_ratio"),
+                "speed_ratio": self._risk_factor_value(result, "speed_ratio"),
+                "speed_change_ratio": self._risk_factor_value(result, "speed_change_ratio"),
+                "acceleration_proxy": self._risk_factor_value(result, "acceleration_proxy"),
+                "jerk_proxy": self._risk_factor_value(result, "jerk_proxy"),
+                "transition_component": self._risk_factor_value(result, "transition_component"),
+                "engagement_component": self._risk_factor_value(result, "engagement_component"),
+                "stability_component": self._risk_factor_value(result, "stability_component"),
+                "dynamic_component": self._risk_factor_value(result, "dynamic_component"),
+                "load_component": self._risk_factor_value(result, "load_component"),
+                "cutting_gate": self._risk_factor_value(result, "cutting_gate"),
+                "state_force_factor": self._nested_value(load_debug, "state_force_factor"),
+                "contact_force_factor": self._nested_value(load_debug, "contact_force_factor"),
+                "motion_state_factor": self._nested_value(load_debug, "motion_state_factor"),
+                "force_factor_ft": self._nested_value(load_debug, "force_factor_ft"),
+                "force_factor_fr": self._nested_value(load_debug, "force_factor_fr"),
+                "force_factor_fa": self._nested_value(load_debug, "force_factor_fa"),
+                "material_name": self._nested_value(coeff_debug, "name"),
+                "material_ktc": self._nested_value(coeff_debug, "Ktc"),
+                "material_krc": self._nested_value(coeff_debug, "Krc"),
+                "material_kac": self._nested_value(coeff_debug, "Kac"),
+                "material_kte": self._nested_value(coeff_debug, "Kte"),
+                "material_kre": self._nested_value(coeff_debug, "Kre"),
+                "material_kae": self._nested_value(coeff_debug, "Kae"),
                 "chatter_risk_level": chatter_level,
                 "direction_change_angle_deg": self._result_value(result, "direction_change_angle"),
                 "is_plunge": bool(result.is_plunge) if result is not None else False,
@@ -594,6 +665,27 @@ class ReportService:
             return ""
         value = getattr(result, attr)
         if isinstance(value, (float, np.floating)):
+            return round(float(value), 6)
+        return value
+
+    def _risk_factor_value(self, result, key: str):
+        """리스크 팩터 dict 값을 CSV 직렬화용으로 정리합니다."""
+
+        if result is None:
+            return ""
+        if not isinstance(result.risk_factors, dict):
+            return ""
+        return self._nested_value(result.risk_factors, key)
+
+    def _nested_value(self, data: Optional[dict], key: str):
+        """중첩 debug dict 값을 반올림해 반환합니다."""
+
+        if not isinstance(data, dict):
+            return ""
+        value = data.get(key, "")
+        if value is None:
+            return ""
+        if isinstance(value, (int, float, np.floating)):
             return round(float(value), 6)
         return value
 

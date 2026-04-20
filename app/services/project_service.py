@@ -20,6 +20,7 @@ from app.models.project import (
     normalize_stock_origin_mode,
 )
 from app.models.tool import Tool
+from app.services.tool_library_service import ToolLibraryService
 from app.utils.logger import get_logger
 
 logger = get_logger("project_service")
@@ -27,6 +28,9 @@ logger = get_logger("project_service")
 
 class ProjectService:
     """프로젝트 파일 로드/저장을 담당하는 서비스 클래스"""
+
+    def __init__(self):
+        self._tool_library_service = ToolLibraryService()
 
     def load_project(self, filepath: str) -> ProjectConfig:
         """YAML 프로젝트 파일을 로드하여 ProjectConfig를 반환합니다."""
@@ -50,12 +54,7 @@ class ProjectService:
             machine = create_default_machine()
             logger.warning("머신 설정이 없어 기본값을 사용합니다.")
 
-        tools = []
-        for tool_data in config_data.get("tools", []):
-            try:
-                tools.append(Tool.from_dict(tool_data))
-            except Exception as exc:
-                logger.warning("공구 로드 실패: %s", exc)
+        tools = self._load_project_tools(config_data, project_dir)
 
         stock_min, stock_max, stock_origin, stock_origin_mode, stock_resolution = (
             self._load_stock_config(config_data.get("stock", {}))
@@ -76,6 +75,7 @@ class ProjectService:
             project_name=config_data.get("project_name", "로드된 프로젝트"),
             version=str(config_data.get("version", "1.0")),
             project_file_path=filepath,
+            tool_library_file=str(config_data.get("tool_library_file", "")),
         )
 
         logger.info(
@@ -127,19 +127,7 @@ class ProjectService:
 
     def load_tools_config(self, filepath: str) -> Dict[int, Tool]:
         """공구 라이브러리 YAML 파일을 로드합니다."""
-
-        data = self.load_yaml_config(filepath)
-        tools: Dict[int, Tool] = {}
-
-        for tool_data in data.get("tools", []):
-            try:
-                tool = Tool.from_dict(tool_data)
-                tools[tool.tool_number] = tool
-            except Exception as exc:
-                logger.warning("공구 로드 실패: %s", exc)
-
-        logger.info("공구 %d개 로드 완료", len(tools))
-        return tools
+        return self._tool_library_service.load_file(filepath)
 
     def load_default_configs(self, configs_dir: str = "configs") -> tuple:
         """기본 머신/공구/시뮬레이션 옵션을 로드합니다."""
@@ -171,6 +159,50 @@ class ProjectService:
                 logger.warning("시뮬레이션 옵션 로드 실패: %s", exc)
 
         return machine, tools, sim_options
+
+    def _load_project_tools(
+        self,
+        config_data: Dict[str, Any],
+        project_dir: str,
+    ) -> list[Tool]:
+        """프로젝트 외부 공구 라이브러리와 인라인 정의를 병합합니다."""
+
+        libraries: list[Dict[int, Tool]] = []
+
+        tool_library_file = config_data.get("tool_library_file")
+        if tool_library_file:
+            resolved = str(tool_library_file)
+            if not os.path.isabs(resolved):
+                resolved = os.path.normpath(os.path.join(project_dir, resolved))
+            try:
+                libraries.append(self._tool_library_service.load_file(resolved))
+            except Exception as exc:
+                logger.warning("프로젝트 공구 라이브러리 로드 실패: %s", exc)
+
+        tool_library_payload = config_data.get("tool_library")
+        if isinstance(tool_library_payload, dict):
+            try:
+                libraries.append(
+                    self._tool_library_service.load_payload(
+                        tool_library_payload,
+                        base_dir=project_dir,
+                        source="<project.tool_library>",
+                    )
+                )
+            except Exception as exc:
+                logger.warning("프로젝트 tool_library 파싱 실패: %s", exc)
+
+        inline_tools = config_data.get("tools", [])
+        if isinstance(inline_tools, list) and inline_tools:
+            libraries.append(
+                self._tool_library_service.load_entries(
+                    inline_tools,
+                    source="<project.tools>",
+                )
+            )
+
+        merged = ToolLibraryService.merge_tools(*libraries)
+        return list(merged.values())
 
     def _load_stock_config(
         self,

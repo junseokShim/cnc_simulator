@@ -328,6 +328,57 @@ model = MachiningModel(
 
 ---
 
+## 공구 라이브러리 입력
+
+공구 정보는 더 이상 단순 라벨이 아니라, 스핀들 부하/절삭 진동/채터 위험 계산에 직접 반영됩니다.
+
+앱 UI에서 직접 편집할 수 있습니다.
+
+1. 우측 탭의 `공구 라이브러리`를 엽니다.
+2. `T5`, `T6`, `T7` 같은 공구 번호별로 직경, 타입, 날 수, 오버행, 길이, 강성, KC, 비고를 수정합니다.
+3. `적용`을 누르면 즉시 시뮬레이션에 반영됩니다.
+4. `저장`을 누르면 프로젝트를 열어 둔 경우 프로젝트 파일의 `tools` 항목에 저장되고, 프로젝트가 없으면 `configs/default_tools.yaml`에 저장됩니다.
+
+중요: 공구 입력값은 항상 직경(mm) 기준입니다.
+
+- `12mm EM` = 직경 12mm 엔드밀
+- 내부 계산 반경 = `직경 / 2`
+- 예) 12mm -> 반경 6mm, 16mm -> 반경 8mm, 7.5mm -> 반경 3.75mm
+
+- `tool_library_file`: 별도 YAML 공구 라이브러리 파일 경로
+- `tool_library.definitions`: 현장식 shorthand 정의
+- `tools`: 상세 YAML 정의
+
+지원 필드 예시는 다음과 같습니다.
+
+```yaml
+tool_library:
+  definitions:
+    - "T5 = 12mm EM 4F OH55 L90 RIGID=1.05 KC=0.95"
+    - "T6 = 10mm EM 4F OH48 L85"
+    - "T7 = 7.5mm DR 2F OH70 L95"
+```
+
+각 필드는 아래처럼 모델에 반영됩니다.
+
+- `diameter_mm`: 접촉 폭, 내부 반경 계산, MRR, 절삭력 스케일
+- `tool_type` / `tool_category`: `REM`, `EM`, `DR`별 절삭/진동 가정
+- `flute_count`: 이빨 통과 주파수와 `fz` 계산
+- `overhang_mm`: 슬렌더니스와 채터 민감도
+- `rigidity_factor`: 유효 강성 및 급속 충격 민감도
+- `cutting_coefficient_factor`, `material_coefficient_overrides`: 절삭력 계수 보정
+
+## 디버그 가시성
+
+세그먼트 CSV와 리포트에는 아래 중간값이 함께 기록됩니다.
+
+- `machining_state`
+- `motion_vibration_um`, `cutting_vibration_um`
+- `motion_risk_score`, `chatter_raw_score`, `chatter_risk_score`
+- `baseline_load_pct`, `axis_motion_load_pct`, `cutting_load_pct`
+- `stability_margin`, `ap_limit_mm`, `dynamic_magnification`
+- `material_ktc`, `material_krc` 등 계수
+
 ## 설치 및 실행
 
 ```bash
