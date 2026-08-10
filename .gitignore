@@ -13,3 +13,9 @@ pytest-cache-files-*/
 # 로그
 logs/*.log
 
+# Unreal 생성물과 로컬 배포 파일
+unreal/**/Binaries/
+unreal/**/Intermediate/
+unreal/**/Saved/
+unreal/**/DerivedDataCache/
+dist/

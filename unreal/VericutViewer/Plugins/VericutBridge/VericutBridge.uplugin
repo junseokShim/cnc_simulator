@@ -1,0 +1,10 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "FriendlyName": "Vericut CNC Bridge",
+  "Description": "Runtime CNC path, machine, stock and physics visualization.",
+  "Category": "Simulation",
+  "CanContainContent": true,
+  "Modules": [{ "Name": "VericutBridge", "Type": "Runtime", "LoadingPhase": "Default" }]
+}

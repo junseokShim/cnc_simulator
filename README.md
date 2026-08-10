@@ -21,6 +21,39 @@
 | 기계 프로파일 | DN Solutions T4000 기본, YAML로 다른 기계 추가 가능 |
 | 검증 규칙 | 급속 이동 소재 진입, 범위 초과, 공구 누락 등 |
 | 리포트 생성 | 검증 결과 + 가공 해석 요약 텍스트/CSV 저장 |
+| Unreal Engine 5 | 절차적 CNC 머신/스톡/공구, 공구경로, Chaos 힘·진동 연동 |
+
+## Unreal Engine 5 실행
+
+```bash
+./venn/bin/python -m app.main \
+  --file examples/simple_pocket.nc \
+  --unreal-export Saved/vericut_scene.json
+```
+
+그 다음 UE 5.4에서 `unreal/VericutViewer/VericutViewer.uproject`를 열고
+`VericutMachiningActor`를 레벨에 배치합니다. 전체 설정, 물리 단위와 정확도 한계는
+[Unreal Engine 연동 문서](docs/UNREAL_ENGINE.md)를 참고하세요.
+
+배포 빌드:
+
+```bash
+./scripts/package_unreal_macos.sh       # macOS .app
+scripts\package_unreal_windows.bat     # Windows .exe (Windows에서 실행)
+```
+
+각 스크립트는 대상 PC에 Unreal Engine이나 Python이 없어도 실행되는 portable ZIP도
+함께 만듭니다. macOS 외부 배포의 Gatekeeper 공증에는 Apple Developer ID가 필요합니다.
+
+실행 앱 오른쪽 패널에서 NC 코드를 붙여넣고 `PARSE / APPLY`를 누르거나, NC 파일의
+절대 경로를 입력하고 `LOAD NC FILE`을 누릅니다. 이후 `PLAY`로 가공을 시작합니다.
+오른쪽 마우스 드래그는 시점 회전, 마우스 휠은 확대/축소이며 `TOP`, `ISO`, `FRONT`
+버튼으로 표준 시점을 즉시 선택할 수 있습니다. 기본 절삭은 2 mm 스톡 복셀과 현재
+공구 직경을 사용해 공구 경로와 절입 깊이에 포함된 소재를 누적 제거합니다. 재생 중에는
+스핀들 부하, XYZ 절삭력(N), XYZ 스핀들 진동(µm)을 오른쪽 모니터에서 확인할 수 있습니다.
+
+검증용 표준 시편은 `examples/standard_specimen.nc`입니다.
+나사 밀링 검증용 M20×2.5 헬리컬 시편은 `examples/thread_milling_standard.nc`입니다.
 
 ---
 

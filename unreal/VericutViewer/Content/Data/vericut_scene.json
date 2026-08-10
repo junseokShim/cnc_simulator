@@ -1,0 +1,2077 @@
+{
+  "schema": "vericut.unreal.scene",
+  "version": 1,
+  "units": "mm",
+  "source": "examples/simple_pocket.nc",
+  "stock": {
+    "min_mm": [
+      -60.0,
+      -60.0,
+      -30.0
+    ],
+    "max_mm": [
+      60.0,
+      60.0,
+      0.0
+    ]
+  },
+  "tools": [
+    {
+      "tool_number": 1,
+      "name": "플랫 엔드밀 φ10",
+      "tool_type": "END_MILL",
+      "diameter": 10.0,
+      "length": 75.0,
+      "flute_length": 25.0,
+      "corner_radius": 0.0,
+      "material": "카바이드",
+      "flute_count": 4
+    },
+    {
+      "tool_number": 2,
+      "name": "볼 엔드밀 φ10",
+      "tool_type": "BALL_END",
+      "diameter": 10.0,
+      "length": 100.0,
+      "flute_length": 1.0,
+      "corner_radius": 4.0,
+      "material": "카바이드",
+      "flute_count": 4
+    },
+    {
+      "tool_number": 3,
+      "name": "드릴 φ6",
+      "tool_type": "DRILL",
+      "diameter": 6.0,
+      "length": 80.0,
+      "flute_length": 40.0,
+      "corner_radius": 0.0,
+      "material": "카바이드",
+      "flute_count": 2
+    },
+    {
+      "tool_number": 4,
+      "name": "페이스밀 450",
+      "tool_type": "END_MILL",
+      "diameter": 4.0,
+      "length": 100.0,
+      "flute_length": 1.0,
+      "corner_radius": 0.0,
+      "material": "카바이드",
+      "flute_count": 4
+    },
+    {
+      "tool_number": 5,
+      "name": "플랫 엔드밀 φ6",
+      "tool_type": "END_MILL",
+      "diameter": 6.0,
+      "length": 60.0,
+      "flute_length": 18.0,
+      "corner_radius": 0.0,
+      "material": "카바이드",
+      "flute_count": 4
+    },
+    {
+      "tool_number": 6,
+      "name": "M8 탭",
+      "tool_type": "TAP",
+      "diameter": 8.0,
+      "length": 70.0,
+      "flute_length": 25.0,
+      "corner_radius": 0.0,
+      "material": "카바이드",
+      "flute_count": 2
+    }
+  ],
+  "physics_model": {
+    "material": "aluminum",
+    "spindle_rated_power_w": 7500.0,
+    "machine_efficiency": 0.85,
+    "machine_stiffness": 1.05,
+    "tool_overhang_factor": 0.9523809523809523,
+    "k_n_per_um": 22.0,
+    "zeta": 0.03,
+    "f_natural_hz": 900.0,
+    "default_ae_ratio": 0.5,
+    "default_ap_mm": 2.0,
+    "xy_vibration_warning_um": 12.0,
+    "z_vibration_warning_um": 9.0,
+    "resultant_vibration_warning_um": 16.0
+  },
+  "stats": {
+    "segment_count": 48,
+    "total_distance_mm": 2370.710678118655,
+    "cutting_distance_mm": 2225.0,
+    "estimated_time_s": 0.0
+  },
+  "segments": [
+    {
+      "id": 0,
+      "line": 20,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 0.0,
+      "spindle_rpm": 0.0,
+      "tool": 0,
+      "points_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 0.0,
+        "spindle_load_pct": 0.0,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    },
+    {
+      "id": 1,
+      "line": 30,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 0.0,
+      "spindle_rpm": 0.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 0.0,
+        "spindle_load_pct": 0.0,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    },
+    {
+      "id": 2,
+      "line": 50,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 0.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          -50.0,
+          -50.0,
+          0.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 617.6470588235294,
+        "spindle_load_pct": 8.235294117647058,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    },
+    {
+      "id": 3,
+      "line": 60,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 0.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -50.0,
+          0.0
+        ],
+        [
+          -50.0,
+          -50.0,
+          5.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 617.6470588235294,
+        "spindle_load_pct": 8.235294117647058,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    },
+    {
+      "id": 4,
+      "line": 70,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 200.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -50.0,
+          5.0
+        ],
+        [
+          -50.0,
+          -50.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "PLUNGE",
+        "force_n": [
+          32.72838879462245,
+          -8.105031467960234,
+          22.66666666666666
+        ],
+        "cutting_force_n": 17.930285869567907,
+        "spindle_power_w": 559.2065193741341,
+        "spindle_load_pct": 7.456086924988455,
+        "mrr_mm3_min": 5656.854249492379,
+        "ap_mm": 3.3333333333333326,
+        "ae_mm": 8.48528137423857,
+        "vibration_um": [
+          1.4193023626074155,
+          0.35148355098291706,
+          0.32765492728971624
+        ],
+        "chatter_risk": 0.18650596866994668
+      }
+    },
+    {
+      "id": 5,
+      "line": 80,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -50.0,
+          -5.0
+        ],
+        [
+          50.0,
+          -50.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 6,
+      "line": 90,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -50.0,
+          -5.0
+        ],
+        [
+          50.0,
+          -40.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 7,
+      "line": 100,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -40.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          -40.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 8,
+      "line": 110,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -40.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          -30.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 9,
+      "line": 120,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -30.0,
+          -5.0
+        ],
+        [
+          50.0,
+          -30.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 10,
+      "line": 130,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -30.0,
+          -5.0
+        ],
+        [
+          50.0,
+          -20.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 11,
+      "line": 140,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -20.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          -20.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 12,
+      "line": 150,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -20.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          -10.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 13,
+      "line": 160,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -10.0,
+          -5.0
+        ],
+        [
+          50.0,
+          -10.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 14,
+      "line": 170,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -10.0,
+          -5.0
+        ],
+        [
+          50.0,
+          0.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 15,
+      "line": 180,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          0.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          0.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 16,
+      "line": 190,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          0.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          10.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 17,
+      "line": 200,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          10.0,
+          -5.0
+        ],
+        [
+          50.0,
+          10.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 18,
+      "line": 210,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          10.0,
+          -5.0
+        ],
+        [
+          50.0,
+          20.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 19,
+      "line": 220,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          20.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          20.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 20,
+      "line": 230,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          20.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          30.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 21,
+      "line": 240,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          30.0,
+          -5.0
+        ],
+        [
+          50.0,
+          30.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 22,
+      "line": 250,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          30.0,
+          -5.0
+        ],
+        [
+          50.0,
+          40.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 23,
+      "line": 260,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          40.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          40.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 24,
+      "line": 270,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          40.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          50.0,
+          -5.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 25,
+      "line": 280,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          50.0,
+          -5.0
+        ],
+        [
+          -50.0,
+          50.0,
+          5.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 622.6890756302522,
+        "spindle_load_pct": 8.302521008403364,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    },
+    {
+      "id": 26,
+      "line": 290,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 200.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          50.0,
+          5.0
+        ],
+        [
+          -50.0,
+          50.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "PLUNGE",
+        "force_n": [
+          36.819437393950246,
+          -9.118160401455263,
+          25.499999999999993
+        ],
+        "cutting_force_n": 20.1715716032639,
+        "spindle_power_w": 563.3484057244723,
+        "spindle_load_pct": 7.5113120763262975,
+        "mrr_mm3_min": 6363.961030678925,
+        "ap_mm": 3.749999999999999,
+        "ae_mm": 8.48528137423857,
+        "vibration_um": [
+          1.5967151579333423,
+          0.39541899485578164,
+          0.36861179320093074
+        ],
+        "chatter_risk": 0.2375105521714637
+      }
+    },
+    {
+      "id": 27,
+      "line": 300,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          50.0,
+          -10.0
+        ],
+        [
+          50.0,
+          50.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          37.576328872056436,
+          -38.761789822076054,
+          15.32345203848225
+        ],
+        "cutting_force_n": 149.54426188859298,
+        "spindle_power_w": 805.6428640126037,
+        "spindle_load_pct": 10.741904853501383,
+        "mrr_mm3_min": 72000.0,
+        "ap_mm": 10.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          1.62953858440431,
+          1.6809473945874172,
+          0.2215060836836628
+        ],
+        "chatter_risk": 0.3881821887137667
+      }
+    },
+    {
+      "id": 28,
+      "line": 310,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          50.0,
+          -10.0
+        ],
+        [
+          50.0,
+          40.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 29,
+      "line": 320,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          40.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          40.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 30,
+      "line": 330,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          40.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          30.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 31,
+      "line": 340,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          30.0,
+          -10.0
+        ],
+        [
+          50.0,
+          30.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 32,
+      "line": 350,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          30.0,
+          -10.0
+        ],
+        [
+          50.0,
+          20.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 33,
+      "line": 360,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          20.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          20.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 34,
+      "line": 370,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          20.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          10.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 35,
+      "line": 380,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          10.0,
+          -10.0
+        ],
+        [
+          50.0,
+          10.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 36,
+      "line": 390,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          10.0,
+          -10.0
+        ],
+        [
+          50.0,
+          0.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 37,
+      "line": 400,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          0.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          0.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 38,
+      "line": 410,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          0.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -10.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 39,
+      "line": 420,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -10.0,
+          -10.0
+        ],
+        [
+          50.0,
+          -10.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 40,
+      "line": 430,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -10.0,
+          -10.0
+        ],
+        [
+          50.0,
+          -20.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 41,
+      "line": 440,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -20.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -20.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 42,
+      "line": 450,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -20.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -30.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 43,
+      "line": 460,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -30.0,
+          -10.0
+        ],
+        [
+          50.0,
+          -30.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 44,
+      "line": 470,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -30.0,
+          -10.0
+        ],
+        [
+          50.0,
+          -40.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 45,
+      "line": 480,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          50.0,
+          -40.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -40.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          18.788164436028218,
+          -19.380894911038027,
+          7.661726019241125
+        ],
+        "cutting_force_n": 74.77213094429649,
+        "spindle_power_w": 667.464289149159,
+        "spindle_load_pct": 8.89952385532212,
+        "mrr_mm3_min": 36000.0,
+        "ap_mm": 5.0,
+        "ae_mm": 9.0,
+        "vibration_um": [
+          0.814769292202155,
+          0.8404736972937086,
+          0.1107530418418314
+        ],
+        "chatter_risk": 0.09966279851392916
+      }
+    },
+    {
+      "id": 46,
+      "line": 490,
+      "motion": "LINEAR",
+      "cutting": true,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -40.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -50.0,
+          -10.0
+        ]
+      ],
+      "physics": {
+        "state": "CUTTING",
+        "force_n": [
+          17.684820661890967,
+          -43.06606534751467,
+          10.943708377791708
+        ],
+        "cutting_force_n": 105.1698237279394,
+        "spindle_power_w": 723.6390940522014,
+        "spindle_load_pct": 9.648521254029351,
+        "mrr_mm3_min": 33600.0,
+        "ap_mm": 5.0,
+        "ae_mm": 8.4,
+        "vibration_um": [
+          0.7669215831313533,
+          1.867607008688924,
+          0.15819529291787654
+        ],
+        "chatter_risk": 0.39299126089902253
+      }
+    },
+    {
+      "id": 47,
+      "line": 500,
+      "motion": "RAPID",
+      "cutting": false,
+      "feedrate_mm_min": 800.0,
+      "spindle_rpm": 3000.0,
+      "tool": 1,
+      "points_mm": [
+        [
+          -50.0,
+          -50.0,
+          -10.0
+        ],
+        [
+          -50.0,
+          -50.0,
+          50.0
+        ]
+      ],
+      "physics": {
+        "state": "RAPID",
+        "force_n": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "cutting_force_n": 0.0,
+        "spindle_power_w": 622.6890756302522,
+        "spindle_load_pct": 8.302521008403364,
+        "mrr_mm3_min": 0.0,
+        "ap_mm": 0.0,
+        "ae_mm": 0.0,
+        "vibration_um": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "chatter_risk": 0.0
+      }
+    }
+  ]
+}

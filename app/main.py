@@ -52,15 +52,61 @@ def main():
         metavar='REPORT_FILE',
         help='헤드리스 모드에서 보고서를 저장할 파일 경로'
     )
+    parser.add_argument(
+        '--unreal-export',
+        metavar='SCENE_JSON',
+        help='NC 공구경로를 Unreal Engine 5 플러그인용 JSON으로 내보냄'
+    )
 
     args = parser.parse_args()
 
-    if args.headless:
+    if args.unreal_export:
+        run_unreal_export(args, logger)
+    elif args.headless:
         # 헤드리스 모드: UI 없이 검증만 실행
         run_headless(args, logger)
     else:
         # GUI 모드: PySide6 애플리케이션 실행
         run_gui(args, logger)
+
+
+def run_unreal_export(args, logger):
+    """Parse an NC file and export a scene consumed by VericutBridge."""
+    if not args.file:
+        print("오류: --unreal-export에는 --file 인수가 필요합니다")
+        sys.exit(2)
+
+    from app.integrations.unreal_exporter import UnrealSceneExporter
+    from app.geometry.stock_model import StockModel
+    from app.parser.gcode_parser import GCodeParser
+    from app.services.project_service import ProjectService
+    from app.simulation.machining_model import create_machining_model_from_config
+    from app.models.project import compute_stock_bounds_from_origin
+
+    try:
+        toolpath = GCodeParser().parse_file(args.file)
+        _, tools, options = ProjectService().load_default_configs("configs")
+        stock_cfg = options.get("stock", {})
+        if "origin" in stock_cfg and "size" in stock_cfg:
+            stock_min, stock_max = compute_stock_bounds_from_origin(
+                stock_cfg["origin"], stock_cfg["size"], stock_cfg.get("origin_mode", "top_center")
+            )
+        else:
+            stock_min = stock_cfg.get("min", [-60, -60, -30])
+            stock_max = stock_cfg.get("max", [60, 60, 0])
+        stock = StockModel(stock_min, stock_max, float(stock_cfg.get("resolution", 2.0)))
+        model = create_machining_model_from_config(options.get("machining", {}))
+        analysis = model.analyze_toolpath(toolpath, tools, stock)
+        output = UnrealSceneExporter().export(
+            toolpath, args.unreal_export, stock_min, stock_max, analysis, tools
+        )
+    except (OSError, ValueError) as exc:
+        logger.error("Unreal 내보내기 실패: %s", exc)
+        print(f"오류: {exc}")
+        sys.exit(1)
+
+    print(f"Unreal 장면 내보내기 완료: {output}")
+    print(f"세그먼트: {len(toolpath.segments)}개")
 
 
 def run_gui(args, logger):
