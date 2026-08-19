@@ -1,15 +1,41 @@
 venn/
 venv/
+
+# macOS artifacts
 .DS_Store
 
-# Python 캐시
+# Python cache
 __pycache__/
 *.py[cod]
 
-# 테스트/실행 부산물
+# Test / run artifacts
 .pytest_cache/
 pytest-cache-files-*/
 
-# 로그
+# Logs
 logs/*.log
+
+# Simulation + ML outputs (generated at runtime)
+outputs/
+
+# Model weights and large binaries
+*.pt
+*.pth
+*.onnx
+*.npy
+*.bin
+
+# Unreal Engine artifacts (removed from active development)
+*.uproject
+*.umap
+*.uasset
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+*.sln
+*.suo
+*.vcxproj
+*.vcxproj.filters
 

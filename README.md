@@ -1,9 +1,84 @@
-# CNC NC 코드 시뮬레이터
+# CNC NC Code Simulator + MachiningFM Integration
 
-> 연구/개발/교육 목적의 Python 기반 3축 CNC 시뮬레이션 및 NC 코드 검증 도구입니다.
-> 실제 산업용 채터 해석기나 상용 검증기의 완전한 대체는 아니며, 공학적 근사 모델을 사용합니다.
+> Python-based 3-axis CNC simulation and NC code verification tool for research, development, and education.
+> Not a substitute for industrial chatter analyzers or commercial verifiers; uses engineering approximation models.
+> Now integrates with **MachiningFM** (1.32B-parameter foundation model) for ML-powered tool wear embeddings.
 
-**기본 기계**: DN Solutions T4000 (BT30, 12,000 RPM)
+**Default machine**: DN Solutions T4000 (BT30, 12,000 RPM)
+
+---
+
+## MachiningFM Integration
+
+The `integrations/machiningfm/` package bridges this simulator with the
+[MachiningFM](https://github.com/junseokShim/MachiningFM) foundation model.
+
+### Quick start
+
+```bash
+# Run full pipeline: NC simulation → MachiningFM inference → save outputs
+python scripts/run_simulation_with_ml.py examples/simple_pocket.nc
+
+# Skip ML (simulation only)
+python scripts/run_simulation_with_ml.py examples/simple_pocket.nc --no-ml
+
+# Custom output directory
+python scripts/run_simulation_with_ml.py examples/contour_example.nc --output-dir /tmp/myrun
+```
+
+### Channel mapping (Simulator → MachiningFM)
+
+The simulator produces per-segment physics estimates. These are mapped to the 7 channels
+MachiningFM expects:
+
+| Ch | MachiningFM channel | Simulator field | Unit |
+|----|---------------------|-----------------|------|
+| 0 | force_x | `estimated_force_x` | N |
+| 1 | force_y | `estimated_force_y` | N |
+| 2 | force_z | `estimated_force_z` | N |
+| 3 | vibration_x | `vibration_x_um` | μm |
+| 4 | vibration_y | `vibration_y_um` | μm |
+| 5 | vibration_z | `vibration_z_um` | μm |
+| 6 | acoustic_emission_rms (proxy) | `spindle_load_pct / 100` | 0–1 |
+
+All channels are z-score normalised per-channel before backbone input.
+
+### Architecture
+
+```
+integrations/machiningfm/
+├── config.py      ← checkpoint path, window_size=32, stride=16, max_len=512
+├── adapter.py     ← MachiningAnalysis → (T, 7) float32 numpy array
+└── inference.py   ← windowed backbone inference, wear score output
+
+scripts/
+└── run_simulation_with_ml.py   ← end-to-end entry point
+
+outputs/run_TIMESTAMP/          ← generated at runtime (gitignored)
+├── segments_segments.csv       ← per-segment simulation data
+├── segments_summary.csv        ← simulation summary
+├── machiningfm_signal.npy      ← adapter output (T, 7)
+├── embeddings.npy              ← window embeddings (n_windows, 2048)
+├── embedding_mean.npy          ← mean embedding (2048,)
+└── summary.json                ← full run metadata
+```
+
+### Backbone
+
+- **Architecture**: `GraphTokenizedStemGNNDecoderOnlyMachiningFM`
+- **d_model**: 2048 (1.32B parameters)
+- **Checkpoint**: `outputs/checkpoints/.../machiningfm_full_pretrain_best.pt` (local)
+- **Windowing**: window_size=32 segments, stride=16, max_len=512
+
+### Setting the FOUNDATION project path
+
+The integration expects MachiningFM at `/Users/junseokshim/Desktop/workspace/FOUNDATION`.
+Override via environment variable:
+
+```bash
+export MACHININGFM_ROOT=/path/to/your/FOUNDATION
+python scripts/run_simulation_with_ml.py examples/simple_pocket.nc
+```
 
 ---
 
