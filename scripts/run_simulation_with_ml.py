@@ -30,9 +30,12 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Path setup: ensure cnc_simulator root and FOUNDATION are importable
+# MACHININGFM_ROOT env var overrides the default sibling-directory heuristic.
 # ---------------------------------------------------------------------------
 _REPO_ROOT = Path(__file__).parent.parent.resolve()
-_FOUNDATION_ROOT = Path("/Users/junseokshim/Desktop/workspace/FOUNDATION")
+_FOUNDATION_ROOT = Path(
+    os.environ.get("MACHININGFM_ROOT", str(_REPO_ROOT.parent / "MachiningFM"))
+)
 
 for p in [str(_REPO_ROOT), str(_FOUNDATION_ROOT)]:
     if p not in sys.path:

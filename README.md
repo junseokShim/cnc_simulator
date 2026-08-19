@@ -70,13 +70,34 @@ outputs/run_TIMESTAMP/          ← generated at runtime (gitignored)
 - **Checkpoint**: `outputs/checkpoints/.../machiningfm_full_pretrain_best.pt` (local)
 - **Windowing**: window_size=32 segments, stride=16, max_len=512
 
-### Setting the FOUNDATION project path
+### Setup in a new environment
 
-The integration expects MachiningFM at `/Users/junseokshim/Desktop/workspace/FOUNDATION`.
-Override via environment variable:
+Clone both repositories as siblings (recommended):
 
 ```bash
-export MACHININGFM_ROOT=/path/to/your/FOUNDATION
+git clone https://github.com/junseokShim/MachiningFM.git
+git clone https://github.com/junseokShim/cnc_simulator.git
+cd cnc_simulator
+pip install -r requirements.txt
+```
+
+Download the pretrained checkpoint (~7.4 GB) from HuggingFace:
+
+```bash
+python scripts/download_checkpoint.py
+# Saves to: ../MachiningFM/outputs/checkpoints/.../machiningfm_full_pretrain_best.pt
+```
+
+Run the pipeline:
+
+```bash
+python scripts/run_simulation_with_ml.py examples/simple_pocket.nc
+```
+
+If the repos are **not** siblings, set `MACHININGFM_ROOT`:
+
+```bash
+export MACHININGFM_ROOT=/path/to/MachiningFM
 python scripts/run_simulation_with_ml.py examples/simple_pocket.nc
 ```
 

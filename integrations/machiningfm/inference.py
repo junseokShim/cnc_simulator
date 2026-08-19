@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import os
+
 import numpy as np
 
 from integrations.machiningfm.config import (
@@ -40,8 +42,12 @@ from integrations.machiningfm.config import (
     TAYLOR_P,
 )
 
-# Ensure FOUNDATION project is importable
-_FOUNDATION_ROOT = Path("/Users/junseokshim/Desktop/workspace/FOUNDATION")
+# Ensure MachiningFM (FOUNDATION) project is importable.
+# Resolution order: MACHININGFM_ROOT env var → sibling directory named MachiningFM.
+_SELF_ROOT = Path(__file__).parent.parent.parent.resolve()  # cnc_simulator root
+_FOUNDATION_ROOT = Path(
+    os.environ.get("MACHININGFM_ROOT", str(_SELF_ROOT.parent / "MachiningFM"))
+)
 if str(_FOUNDATION_ROOT) not in sys.path:
     sys.path.insert(0, str(_FOUNDATION_ROOT))
 
