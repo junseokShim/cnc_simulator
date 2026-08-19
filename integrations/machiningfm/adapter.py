@@ -27,7 +27,7 @@ from typing import List
 import numpy as np
 
 from app.models.machining_result import MachiningAnalysis, SegmentMachiningResult
-from integrations.machiningfm.config import N_CHANNELS, CHANNEL_NAMES
+from integrations.machiningfm.config import N_CHANNELS, CHANNEL_NAMES, TIME_PER_SEGMENT_MIN
 
 
 class SimulatorToMachiningFMAdapter:
@@ -97,6 +97,8 @@ class SimulatorToMachiningFMAdapter:
         raw = self._extract_raw(used_results)        # (T, 7)
         signal = self._normalise(raw) if self.normalise else raw.astype(np.float32)
 
+        conditions = self._extract_conditions(used_results)
+
         meta = {
             "n_segments_total": len(results),
             "n_cutting_segments": len(cutting_results),
@@ -104,6 +106,7 @@ class SimulatorToMachiningFMAdapter:
             "channel_names": CHANNEL_NAMES,
             "normalised": self.normalise,
             "mode": used_label,
+            "machining_conditions": conditions,
         }
         return signal, meta
 
@@ -144,6 +147,34 @@ class SimulatorToMachiningFMAdapter:
             arr[i, 6] = r.spindle_load_pct / 100.0     # ae_proxy [0-1]
 
         return arr
+
+    @staticmethod
+    def _extract_conditions(results: List[SegmentMachiningResult]) -> dict:
+        """
+        Extract per-segment machining conditions needed for physics features.
+
+        Returns a dict with arrays of length T (one entry per segment):
+          'cutting_speed_m_per_min', 'feed_per_tooth_mm', 'axial_depth_mm',
+          'elapsed_time_min'
+        """
+        n = len(results)
+        cutting_speed = np.zeros(n, dtype=np.float32)
+        feed_per_tooth = np.zeros(n, dtype=np.float32)
+        axial_depth = np.zeros(n, dtype=np.float32)
+        elapsed_time = np.zeros(n, dtype=np.float32)
+
+        for i, r in enumerate(results):
+            cutting_speed[i] = r.cutting_speed          # m/min
+            feed_per_tooth[i] = r.feed_per_tooth        # mm/tooth
+            axial_depth[i] = r.axial_depth_ap           # mm
+            elapsed_time[i] = (i + 1) * TIME_PER_SEGMENT_MIN
+
+        return {
+            "cutting_speed_m_per_min": cutting_speed,
+            "feed_per_tooth_mm": feed_per_tooth,
+            "axial_depth_mm": axial_depth,
+            "elapsed_time_min": elapsed_time,
+        }
 
     @staticmethod
     def _normalise(arr: np.ndarray) -> np.ndarray:

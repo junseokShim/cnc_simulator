@@ -76,3 +76,20 @@ CHANNEL_NAMES: list[str] = [
 # ---------------------------------------------------------------------------
 DEVICE: str = os.environ.get("MACHININGFM_DEVICE", "cpu")
 BACKBONE_MODE: str = "frozen"
+
+# ---------------------------------------------------------------------------
+# Physics — Taylor tool-life calibration
+# ---------------------------------------------------------------------------
+# Default values from PHM2010 Ti6Al4V milling literature.
+# Override via configs/physics/default.yaml in FOUNDATION or env vars.
+TAYLOR_C: float = float(os.environ.get("MACHININGFM_TAYLOR_C", "200.0"))   # m/min
+TAYLOR_N: float = float(os.environ.get("MACHININGFM_TAYLOR_N", "0.25"))
+TAYLOR_M: float = float(os.environ.get("MACHININGFM_TAYLOR_M", "0.0"))
+TAYLOR_P: float = float(os.environ.get("MACHININGFM_TAYLOR_P", "0.0"))
+
+# Approximate machining time per NC segment in minutes.
+# Used to accumulate elapsed_time when no explicit timing is in the simulation.
+# A typical NC segment at F500 mm/min over ~8 mm ≈ 0.016 min ≈ 1 s.
+TIME_PER_SEGMENT_MIN: float = float(
+    os.environ.get("MACHININGFM_TIME_PER_SEGMENT_MIN", "0.02")
+)

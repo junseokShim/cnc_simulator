@@ -138,14 +138,14 @@ def step_adapt(analysis):
     return signal, meta
 
 
-def step_infer(signal: np.ndarray):
-    """Run MachiningFM backbone inference."""
+def step_infer(signal: np.ndarray, conditions: dict | None = None):
+    """Run MachiningFM backbone inference with optional physics features."""
     print("[Step 4b/4] Running MachiningFM backbone inference ...")
     from integrations.machiningfm.inference import MachiningFMInference
 
     runner = MachiningFMInference()
     t0 = time.time()
-    result = runner.run(signal)
+    result = runner.run(signal, conditions=conditions)
     elapsed = time.time() - t0
 
     emb = result["embedding_mean"]
@@ -154,6 +154,11 @@ def step_infer(signal: np.ndarray):
     print(f"  Embedding shape: {emb.shape}")
     print(f"  Embedding min={emb.min():.6f}, max={emb.max():.6f}, mean={emb.mean():.6f}")
     print(f"  Zero-shot wear score (L2 norm): {result['wear_score']:.4f}")
+
+    if result.get("tool_life_ratios"):
+        ratios = result["tool_life_ratios"]
+        print(f"  Taylor tool_life_ratio — windows: {len(ratios)}, "
+              f"min={min(ratios):.4f}, max={max(ratios):.4f}, mean={sum(ratios)/len(ratios):.4f}")
     return result
 
 
@@ -232,6 +237,7 @@ def save_outputs(
             "embedding_max": float(ml_result["embedding_mean"].max()),
             "embedding_mean": float(ml_result["embedding_mean"].mean()),
             "wear_score": ml_result["wear_score"],
+            "tool_life_ratios": ml_result.get("tool_life_ratios"),
         },
     }
     summary_path = out_dir / "summary.json"
@@ -270,7 +276,7 @@ def main():
     ml_result = None
     if not args.no_ml:
         try:
-            ml_result = step_infer(signal)
+            ml_result = step_infer(signal, conditions=adapter_meta.get("machining_conditions"))
         except Exception as exc:
             print(f"  WARNING: MachiningFM inference failed: {exc}")
             print("  Continuing without ML output.")

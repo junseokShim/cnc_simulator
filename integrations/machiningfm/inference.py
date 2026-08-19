@@ -34,6 +34,10 @@ from integrations.machiningfm.config import (
     MAX_LEN,
     WINDOW_SIZE,
     STRIDE,
+    TAYLOR_C,
+    TAYLOR_N,
+    TAYLOR_M,
+    TAYLOR_P,
 )
 
 # Ensure FOUNDATION project is importable
@@ -89,7 +93,54 @@ class MachiningFMInference:
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self, signal: np.ndarray) -> dict:
+    def _build_physics_features(
+        self,
+        conditions: dict | None,
+        window_indices: list[tuple[int, int]],
+    ) -> list | None:
+        """
+        Compute PhysicsFeatures for each window using Taylor tool-life equation.
+
+        Uses representative (median) machining conditions within each window.
+        Returns None if conditions dict is not provided.
+        """
+        if conditions is None:
+            return None
+
+        try:
+            from machiningfm.physics.taylor import TaylorParams, compute_tool_life_ratio
+            from machiningfm.physics.calibration import PhysicsFeatures
+        except ImportError:
+            return None
+
+        taylor_params = TaylorParams(
+            C=TAYLOR_C, n=TAYLOR_N, m=TAYLOR_M, p=TAYLOR_P
+        )
+
+        features = []
+        for start, end in window_indices:
+            vc = float(np.median(conditions["cutting_speed_m_per_min"][start:end]))
+            fz = float(np.median(conditions["feed_per_tooth_mm"][start:end]))
+            ap = float(np.median(conditions["axial_depth_mm"][start:end]))
+            t  = float(conditions["elapsed_time_min"][end - 1])  # end of window
+
+            pf = PhysicsFeatures()
+            try:
+                if vc > 0 and fz > 0 and ap > 0:
+                    pf.tool_life_ratio = compute_tool_life_ratio(
+                        elapsed_time_min=t,
+                        cutting_speed_m_per_min=vc,
+                        feed_mm_per_rev=fz,
+                        axial_depth_mm=ap,
+                        params=taylor_params,
+                    )
+            except Exception:
+                pass
+            features.append(pf)
+
+        return features
+
+    def run(self, signal: np.ndarray, conditions: dict | None = None) -> dict:
         """
         Run windowed backbone inference on a (T, C) signal.
 
@@ -117,7 +168,7 @@ class MachiningFMInference:
             print(f"[MachiningFMInference] WARNING: {n_nan} NaN values in signal; replacing with 0.")
             signal = np.nan_to_num(signal, nan=0.0)
 
-        windows = self._sliding_windows(signal)
+        windows, window_indices = self._sliding_windows_with_indices(signal)
         backbone = self._get_backbone()
 
         window_embeddings = extract_embeddings(
@@ -132,6 +183,13 @@ class MachiningFMInference:
         # Zero-shot wear score: L2 norm of mean embedding (relative risk proxy)
         wear_score = float(np.linalg.norm(embedding_mean))
 
+        # Physics features — Taylor tool-life ratio per window
+        physics_features = self._build_physics_features(conditions, window_indices)
+        tool_life_ratios = None
+        if physics_features is not None:
+            ratios = [pf.tool_life_ratio for pf in physics_features]
+            tool_life_ratios = [r for r in ratios if r is not None]
+
         return {
             "windows": windows,
             "window_embeddings": window_embeddings,
@@ -140,35 +198,41 @@ class MachiningFMInference:
             "signal_shape": (T, C),
             "n_nan": n_nan,
             "wear_score": wear_score,
+            "physics_features": physics_features,
+            "tool_life_ratios": tool_life_ratios,
         }
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _sliding_windows(self, signal: np.ndarray) -> list[np.ndarray]:
+    def _sliding_windows_with_indices(
+        self, signal: np.ndarray
+    ) -> tuple[list[np.ndarray], list[tuple[int, int]]]:
         """
-        Slice signal into overlapping windows of shape (window_size, C).
+        Slice signal into overlapping windows. Returns (windows, [(start, end), ...]).
 
-        If T < window_size, return a single padded window.
+        If T < window_size, returns a single zero-padded window with index (0, T).
         """
         T = signal.shape[0]
 
         if T < self.window_size:
-            # Pad with zeros at the beginning
             pad_len = self.window_size - T
             padded = np.zeros((self.window_size, signal.shape[1]), dtype=signal.dtype)
             padded[pad_len:] = signal
-            return [padded]
+            return [padded], [(0, T)]
 
         windows = []
+        indices = []
         start = 0
         while start + self.window_size <= T:
             windows.append(signal[start : start + self.window_size].copy())
+            indices.append((start, start + self.window_size))
             start += self.stride
 
         # Ensure at least one window
         if not windows:
             windows.append(signal[-self.window_size:].copy())
+            indices.append((T - self.window_size, T))
 
-        return windows
+        return windows, indices
